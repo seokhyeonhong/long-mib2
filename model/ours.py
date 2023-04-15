@@ -235,9 +235,6 @@ class ContextDecoder(nn.Module):
     def forward(self, motion, traj, z):
         B, T, D = motion.shape
 
-        # original motion
-        original_motion = motion.clone()
-
         # fill in missing frames with z
         mask = get_mask(motion, self.config.context_frames)
         motion = mask * motion + (1-mask) * z
@@ -262,9 +259,6 @@ class ContextDecoder(nn.Module):
 
         # decoder
         x = self.decoder(x)
-
-        # unmask
-        x = mask * original_motion + (1-mask) * x
 
         return x
     
@@ -369,9 +363,6 @@ class ContextGenerator(nn.Module):
     def forward(self, motion, traj):
         B, T, D = motion.shape
 
-        # original motion
-        original_motion = motion.clone()
-
         # fill in missing frames with z
         mask = get_mask(motion, self.config.context_frames)
         z    = torch.randn_like(motion)
@@ -397,9 +388,6 @@ class ContextGenerator(nn.Module):
 
         # decoder
         x = self.decoder(x)
-
-        # unmask
-        x = mask * original_motion + (1-mask) * x
 
         return x
 

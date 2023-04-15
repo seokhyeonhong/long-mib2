@@ -192,7 +192,6 @@ if __name__ == "__main__":
                     writer.add_scalar("val_loss/pose",  val_loss_dict["pose"]   / len(val_dataloader), iter)
                     writer.add_scalar("val_loss/smooth",val_loss_dict["smooth"] / len(val_dataloader), iter)
                     writer.add_scalar("val_loss/traj",  val_loss_dict["traj"]   / len(val_dataloader), iter)
-                    writer.add_scalar("val_loss/kl",    val_loss_dict["kl"]     / len(val_dataloader), iter)
 
                 model.train()
 
