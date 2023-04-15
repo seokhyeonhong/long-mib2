@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 from pymovis.ops import rotation, motionops
 from pymovis.learning.mlp import MultiLinear
-from pymovis.learning.transformer import MultiHeadAttention, PoswiseFeedForwardNet, LocalMultiHeadAttention, LinearMultiHeadAttention
+from pymovis.learning.transformer import MultiHeadAttention, PoswiseFeedForwardNet, LocalMultiHeadAttention
 
 def get_mask(batch, context_frames):
     B, T, D = batch.shape
