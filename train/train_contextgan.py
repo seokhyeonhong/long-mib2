@@ -43,8 +43,6 @@ if __name__ == "__main__":
     # model
     print("Initializing model...")
     model = ContextGAN(dataset.shape[-1], config).to(device)
-    if torch.cuda.device_count() > 1:
-        model = torch.nn.DataParallel(model)
     optim = torch.optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.98), eps=1e-9)
     init_epoch, iter = trainutil.load_latest_ckpt(model, optim, config)
     init_iter = iter
@@ -89,11 +87,11 @@ if __name__ == "__main__":
 
             """ 2. Train Discriminator """
             # generate
-            fake_motion = model.generate(GT_batch, GT_traj)
+            pred_motion = model.generate(GT_batch, GT_traj)
 
             # discriminate
             disc_real_short, disc_real_long = model.discriminate(GT_batch)
-            disc_fake_short, disc_fake_long = model.discriminate(fake_motion.detach())
+            disc_fake_short, disc_fake_long = model.discriminate(pred_motion.detach())
             loss_disc = config.weight_adv * (trainutil.loss_disc(disc_fake_short, disc_real_short)\
                                              + trainutil.loss_disc(disc_fake_long, disc_real_long))
             
@@ -104,10 +102,10 @@ if __name__ == "__main__":
 
             """ 3. Train Generator """
             # generate
-            fake_motion = model.generate(GT_batch, GT_traj)
+            pred_motion = model.generate(GT_batch, GT_traj)
 
             # discriminate
-            disc_fake_short, disc_fake_long = model.discriminate(fake_motion)
+            disc_fake_short, disc_fake_long = model.discriminate(pred_motion)
             loss_gen = config.weight_adv * (trainutil.loss_gen(disc_fake_short) + trainutil.loss_gen(disc_fake_long))
 
             # predicted motion
@@ -143,7 +141,7 @@ if __name__ == "__main__":
             loss_dict["gen"]    += loss_gen.item()
 
             if iter % config.log_interval == 0:
-                tqdm.write(f"Iter {iter} | Loss: {loss_dict['total'] / config.log_interval:.4f} | Pose: {loss_dict['pose'] / config.log_interval:.4f} | Smooth: {loss_dict['smooth'] / config.log_interval:.4f} | Traj: {loss_dict['traj'] / config.log_interval:.4f} | Disc: {loss_dict['disc'] / config.log_interval:.4f} | Gen: {loss_dict['gen'] / config.log_interval:.4f} | Time: {(time.time() - start_time) / 60:.2f} min")
+                tqdm.write(f"Iter {iter} | Loss: {loss_dict['total'] / config.log_interval:.4f} | Pose: {loss_dict['pose'] / config.log_interval:.4f} | Smooth: {loss_dict['smooth'] / config.log_interval:.4f} | Traj: {loss_dict['traj'] / config.log_interval:.4f} | Disc: {loss_dict['disc'] / config.log_interval:.4f} | Gen: {loss_dict['gen'] / config.log_interval:.4f} | Time: {(time.perf_counter() - start_time) / 60:.2f} min")
                 writer.add_scalar("loss/total", loss_dict["total"]  / config.log_interval, iter)
                 writer.add_scalar("loss/pose",  loss_dict["pose"]   / config.log_interval, iter)
                 writer.add_scalar("loss/smooth",loss_dict["smooth"] / config.log_interval, iter)
@@ -163,7 +161,6 @@ if __name__ == "__main__":
                         "pose": 0,
                         "smooth": 0,
                         "traj": 0,
-                        "kl": 0,
                     }
                     for GT_motion in tqdm(val_dataloader, desc="Validation"):
                         transition = config.max_transition
@@ -186,7 +183,7 @@ if __name__ == "__main__":
                         """ 2. Forward ContextVAE """
                         # normalize - forward - denormalize
                         GT_batch = (GT_motion - motion_mean) / motion_std
-                        pred_motion, pred_mu, pred_logvar = model(GT_batch, GT_traj)
+                        pred_motion = model.generate(GT_batch, GT_traj)
                         pred_motion = pred_motion * motion_std + motion_mean
 
                         # predicted motion data
@@ -205,22 +202,19 @@ if __name__ == "__main__":
                         loss_smooth = config.weight_smooth * (trainutil.loss_smooth(pred_global_p)\
                                                             + trainutil.loss_smooth(pred_local_R6))
                         loss_traj = config.weight_traj * (trainutil.loss_recon(pred_root_xz, GT_root_xz))
-                        loss_kl   = config.weight_kl * trainutil.loss_kl(pred_mu, pred_logvar)
-                        loss = loss_pose + loss_smooth + loss_traj + loss_kl
+                        loss = loss_pose + loss_smooth + loss_traj
 
                         # log
                         val_loss_dict["total"]   += loss.item()
                         val_loss_dict["pose"]    += loss_pose.item()
                         val_loss_dict["smooth"]  += loss_smooth.item()
                         val_loss_dict["traj"]    += loss_traj.item()
-                        val_loss_dict["kl"]      += loss_kl.item()
 
                     tqdm.write(f"Iter {iter} | Val Loss: {val_loss_dict['total'] / len(val_dataloader):.4f} | Val Pose: {val_loss_dict['pose'] / len(val_dataloader):.4f} | Val Traj: {val_loss_dict['traj'] / len(val_dataloader):.4f}")
                     writer.add_scalar("val_loss/total", val_loss_dict["total"]  / len(val_dataloader), iter)
                     writer.add_scalar("val_loss/pose",  val_loss_dict["pose"]   / len(val_dataloader), iter)
                     writer.add_scalar("val_loss/smooth",val_loss_dict["smooth"] / len(val_dataloader), iter)
                     writer.add_scalar("val_loss/traj",  val_loss_dict["traj"]   / len(val_dataloader), iter)
-                    writer.add_scalar("val_loss/kl",    val_loss_dict["kl"]     / len(val_dataloader), iter)
 
                 model.train()
 
