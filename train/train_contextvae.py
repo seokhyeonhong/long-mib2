@@ -43,8 +43,6 @@ if __name__ == "__main__":
     # model
     print("Initializing model...")
     model = ContextVAE(dataset.shape[-1], config).to(device)
-    if torch.cuda.device_count() > 1:
-        model = torch.nn.DataParallel(model)
     optim = torch.optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.98), eps=1e-9)
     init_epoch, iter = trainutil.load_latest_ckpt(model, optim, config)
     init_iter = iter
@@ -140,7 +138,6 @@ if __name__ == "__main__":
                         "pose": 0,
                         "smooth": 0,
                         "traj": 0,
-                        "kl": 0,
                     }
                     for GT_motion in tqdm(val_dataloader, desc="Validation"):
                         transition = config.max_transition
@@ -163,7 +160,7 @@ if __name__ == "__main__":
                         """ 2. Forward ContextVAE """
                         # normalize - forward - denormalize
                         GT_batch = (GT_motion - motion_mean) / motion_std
-                        pred_motion, pred_mu, pred_logvar = model(GT_batch, GT_traj)
+                        pred_motion = model.sample(GT_batch, GT_traj)
                         pred_motion = pred_motion * motion_std + motion_mean
 
                         # predicted motion data
@@ -182,7 +179,6 @@ if __name__ == "__main__":
                         loss_smooth = config.weight_smooth * (trainutil.loss_smooth(pred_global_p)\
                                                             + trainutil.loss_smooth(pred_local_R6))
                         loss_traj = config.weight_traj * (trainutil.loss_recon(pred_root_xz, GT_root_xz))
-                        loss_kl   = config.weight_kl * trainutil.loss_kl(pred_mu, pred_logvar)
                         loss = loss_pose + loss_smooth + loss_traj + loss_kl
 
                         # log
@@ -190,7 +186,6 @@ if __name__ == "__main__":
                         val_loss_dict["pose"]    += loss_pose.item()
                         val_loss_dict["smooth"]  += loss_smooth.item()
                         val_loss_dict["traj"]    += loss_traj.item()
-                        val_loss_dict["kl"]      += loss_kl.item()
 
                     tqdm.write(f"Iter {iter} | Val Loss: {val_loss_dict['total'] / len(val_dataloader):.4f} | Val Pose: {val_loss_dict['pose'] / len(val_dataloader):.4f} | Val Traj: {val_loss_dict['traj'] / len(val_dataloader):.4f}")
                     writer.add_scalar("val_loss/total", val_loss_dict["total"]  / len(val_dataloader), iter)

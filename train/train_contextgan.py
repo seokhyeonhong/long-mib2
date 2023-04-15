@@ -121,9 +121,9 @@ if __name__ == "__main__":
 
             # loss
             loss_pose = config.weight_pose * (trainutil.loss_recon(pred_global_p, GT_global_p)\
-                                              + trainutil.loss_recon(pred_local_R6, GT_local_R6))
+                                            + trainutil.loss_recon(pred_local_R6, GT_local_R6))
             loss_smooth = config.weight_smooth * (trainutil.loss_smooth(pred_global_p)\
-                                                  + trainutil.loss_smooth(pred_local_R6))
+                                                + trainutil.loss_smooth(pred_local_R6))
             loss_traj = config.weight_traj * (trainutil.loss_recon(pred_root_xz, GT_root_xz))
             loss = loss_pose + loss_smooth + loss_traj + loss_gen
 
