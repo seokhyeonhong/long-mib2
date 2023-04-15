@@ -16,13 +16,13 @@ from pymovis.ops import motionops, rotation, mathops
 
 from utility.dataset import MotionDataset
 from utility.config import Config
-from model.ours import ContextVAE
+from model.ours import ContextGAN
 from utility import trainutil
 
 if __name__ == "__main__":
     # initial settings with all possible gpus
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = Config.load("configs/context_vae.json")
+    config = Config.load("configs/context_gan.json")
     util.seed()
 
     # dataset
@@ -42,7 +42,7 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = ContextVAE(dataset.shape[-1], config).to(device)
+    model = ContextGAN(dataset.shape[-1], config).to(device)
     if torch.cuda.device_count() > 1:
         model = torch.nn.DataParallel(model)
     optim = torch.optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.98), eps=1e-9)
@@ -61,7 +61,8 @@ if __name__ == "__main__":
         "pose":    0,
         "smooth":  0,
         "traj":    0,
-        "kl":      0,
+        "disc":    0,
+        "gen":     0,
     }
     start_time = time.perf_counter()
     for epoch in range(init_epoch, config.epochs+1):
@@ -83,13 +84,34 @@ if __name__ == "__main__":
             GT_root_angle = torch.atan2(GT_root_fwd[..., 0], GT_root_fwd[..., 2]) # arctan2(x, z)
             GT_traj       = torch.cat([GT_root_xz, GT_root_angle.unsqueeze(-1)], dim=-1)
 
-            """ 2. Forward ContextVAE """
-            # normalize - forward - denormalize
+            # batch
             GT_batch = (GT_motion - motion_mean) / motion_std
-            pred_motion, pred_mu, pred_logvar = model(GT_batch, GT_traj)
-            pred_motion = pred_motion * motion_std + motion_mean
 
-            # predicted motion data
+            """ 2. Train Discriminator """
+            # generate
+            fake_motion = model.generate(GT_batch, GT_traj)
+
+            # discriminate
+            disc_real_short, disc_real_long = model.discriminate(GT_batch)
+            disc_fake_short, disc_fake_long = model.discriminate(fake_motion.detach())
+            loss_disc = config.weight_adv * (trainutil.loss_disc(disc_fake_short, disc_real_short)\
+                                             + trainutil.loss_disc(disc_fake_long, disc_real_long))
+            
+            # update discriminator
+            optim.zero_grad()
+            loss_disc.backward()
+            optim.step()
+
+            """ 3. Train Generator """
+            # generate
+            fake_motion = model.generate(GT_batch, GT_traj)
+
+            # discriminate
+            disc_fake_short, disc_fake_long = model.discriminate(fake_motion)
+            loss_gen = config.weight_adv * (trainutil.loss_gen(disc_fake_short) + trainutil.loss_gen(disc_fake_long))
+
+            # predicted motion
+            pred_motion = pred_motion * motion_std + motion_mean
             pred_local_R6, pred_root_p = torch.split(pred_motion, [D-3, 3], dim=-1)
             _, pred_global_p = motionops.R6_fk(pred_local_R6.reshape(B, T, -1, 6), pred_root_p, skeleton)
 
@@ -99,39 +121,40 @@ if __name__ == "__main__":
             pred_root_fwd   = F.normalize(pred_root_fwd * torchconst.XZ(device), dim=-1)
             pred_root_angle = torch.atan2(pred_root_fwd[..., 0], pred_root_fwd[..., 2]) # arctan2(x, z)
 
-            """ 3. Loss """
+            # loss
             loss_pose = config.weight_pose * (trainutil.loss_recon(pred_global_p, GT_global_p)\
                                               + trainutil.loss_recon(pred_local_R6, GT_local_R6))
             loss_smooth = config.weight_smooth * (trainutil.loss_smooth(pred_global_p)\
                                                   + trainutil.loss_smooth(pred_local_R6))
             loss_traj = config.weight_traj * (trainutil.loss_recon(pred_root_xz, GT_root_xz))
-            loss_kl   = config.weight_kl * trainutil.loss_kl(pred_mu, pred_logvar)
-            loss = loss_pose + loss_smooth + loss_traj + loss_kl
+            loss = loss_pose + loss_smooth + loss_traj + loss_gen
 
-            """ 4. Backward """
+            # update generator
             optim.zero_grad()
             loss.backward()
             optim.step()
 
-            """ 5. Log """
+            """ 4. Log """
             loss_dict["total"]  += loss.item()
             loss_dict["pose"]   += loss_pose.item()
             loss_dict["smooth"] += loss_smooth.item()
             loss_dict["traj"]   += loss_traj.item()
-            loss_dict["kl"]     += loss_kl.item()
+            loss_dict["disc"]   += loss_disc.item()
+            loss_dict["gen"]    += loss_gen.item()
 
             if iter % config.log_interval == 0:
-                tqdm.write(f"Iter {iter} | Loss: {loss_dict['total'] / config.log_interval:.4f} | Pose: {loss_dict['pose'] / config.log_interval:.4f} | Smooth: {loss_dict['smooth'] / config.log_interval:.4f} | Traj: {loss_dict['traj'] / config.log_interval:.4f} | KL: {loss_dict['kl'] / config.log_interval:.4f} | Time: {(time.perf_counter() - start_time) / 60:.2f} min")
+                tqdm.write(f"Iter {iter} | Loss: {loss_dict['total'] / config.log_interval:.4f} | Pose: {loss_dict['pose'] / config.log_interval:.4f} | Smooth: {loss_dict['smooth'] / config.log_interval:.4f} | Traj: {loss_dict['traj'] / config.log_interval:.4f} | Disc: {loss_dict['disc'] / config.log_interval:.4f} | Gen: {loss_dict['gen'] / config.log_interval:.4f} | Time: {(time.time() - start_time) / 60:.2f} min")
                 writer.add_scalar("loss/total", loss_dict["total"]  / config.log_interval, iter)
                 writer.add_scalar("loss/pose",  loss_dict["pose"]   / config.log_interval, iter)
                 writer.add_scalar("loss/smooth",loss_dict["smooth"] / config.log_interval, iter)
                 writer.add_scalar("loss/traj",  loss_dict["traj"]   / config.log_interval, iter)
-                writer.add_scalar("loss/kl",    loss_dict["kl"]     / config.log_interval, iter)
+                writer.add_scalar("loss/disc",  loss_dict["disc"]   / config.log_interval, iter)
+                writer.add_scalar("loss/gen",   loss_dict["gen"]    / config.log_interval, iter)
                 
                 for k in loss_dict.keys():
                     loss_dict[k] = 0
             
-            """ 6. Validation """
+            """ 5. Validation """
             if iter % config.val_interval == 0:
                 model.eval()
                 with torch.no_grad():

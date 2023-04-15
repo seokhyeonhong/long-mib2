@@ -51,7 +51,7 @@ def get_noam_scheduler(config, optim):
     return torch.optim.lr_scheduler.LambdaLR(optim, lr_lambda=_lr_lambda)
 
 def loss_kl(mu, logvar):
-    return torch.mean(-0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()))
+    return torch.mean(-0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1))
 
 def loss_recon(recon, x):
     return F.l1_loss(recon, x)
@@ -59,3 +59,13 @@ def loss_recon(recon, x):
 def loss_smooth(x):
     x_ = x[:, 1:] - x[:, :-1]
     return F.l1_loss(x_, torch.zeros_like(x_))
+
+def loss_disc(disc_fake, disc_real):
+    # non-saturating loss
+    loss_fake = -torch.mean(torch.log(1 - disc_fake + 1e-8))
+    loss_real = -torch.mean(torch.log(disc_real + 1e-8))
+    return loss_fake + loss_real
+
+def loss_gen(disc_fake):
+    # non-saturating loss
+    return -torch.mean(torch.log(disc_fake + 1e-8))
