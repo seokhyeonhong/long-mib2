@@ -79,6 +79,14 @@ class ContextEncoder(nn.Module):
             self.atten_layers.append(LocalMultiHeadAttention(self.d_model, self.d_head, self.n_heads, self.fps+1, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
             self.pffn_layers.append(PoswiseFeedForwardNet(self.d_model, self.d_ff, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
 
+        # decoder
+        self.decoder = nn.Sequential(
+            nn.Linear(self.d_model, self.d_model),
+            nn.PReLU(),
+            nn.Dropout(self.dropout),
+            nn.Linear(self.d_model, self.d_motion),
+        )
+
     def forward(self, x):
         B, T, D = x.shape
 
@@ -102,6 +110,10 @@ class ContextEncoder(nn.Module):
         if self.pre_layernorm:
             x = self.layer_norm(x)
 
+        # decoder
+        x = self.decoder(x)
+
+        # split mu and logvar
         mu, logvar = x[:, 0], x[:, 1]
 
         return mu, logvar
@@ -191,7 +203,7 @@ class ContextDecoder(nn.Module):
 
         # Transformer layers
         for i in range(self.n_layers):
-            x = self.atten_layers[i](x, z, lookup_table=rel_pos)
+            x = self.atten_layers[i](x, x, lookup_table=rel_pos)
             x = self.cross_layers[i](x, context, lookup_table=rel_pos)
             x = self.pffn_layers[i](x)
 
@@ -233,5 +245,5 @@ class ContextVAE(nn.Module):
     
     def sample(self, motion, traj):
         B, T, D = motion.shape
-        z = torch.randn(B, T, self.config.d_model, dtype=motion.dtype, device=motion.device)
+        z = torch.randn(B, T, D, dtype=motion.dtype, device=motion.device)
         return self.decoder(motion, traj, z)
