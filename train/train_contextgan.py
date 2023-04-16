@@ -87,7 +87,7 @@ if __name__ == "__main__":
 
             """ 2. Train Discriminator """
             # generate
-            pred_motion = model.generate(GT_batch, GT_traj)
+            pred_motion, _ = model.generate(GT_batch, GT_traj)
 
             # discriminate
             disc_real_short, disc_real_long = model.discriminate(GT_batch)
@@ -102,7 +102,7 @@ if __name__ == "__main__":
 
             """ 3. Train Generator """
             # generate
-            pred_motion = model.generate(GT_batch, GT_traj)
+            pred_motion, _ = model.generate(GT_batch, GT_traj)
 
             # discriminate
             disc_fake_short, disc_fake_long = model.discriminate(pred_motion)
@@ -162,7 +162,7 @@ if __name__ == "__main__":
                         "smooth": 0,
                         "traj": 0,
                     }
-                    for GT_motion in tqdm(val_dataloader, desc="Validation"):
+                    for GT_motion in tqdm(val_dataloader, desc="Validation", leave=False):
                         transition = config.max_transition
                         T = config.context_frames + transition + 1
                         GT_motion = GT_motion[:, :T, :].to(device)
@@ -183,7 +183,7 @@ if __name__ == "__main__":
                         """ 2. Forward ContextVAE """
                         # normalize - forward - denormalize
                         GT_batch = (GT_motion - motion_mean) / motion_std
-                        pred_motion = model.generate(GT_batch, GT_traj)
+                        pred_motion, _ = model.generate(GT_batch, GT_traj)
                         pred_motion = pred_motion * motion_std + motion_mean
 
                         # predicted motion data
