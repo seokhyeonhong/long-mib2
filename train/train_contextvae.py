@@ -16,7 +16,7 @@ from pymovis.ops import motionops, rotation, mathops
 
 from utility.dataset import MotionDataset
 from utility.config import Config
-from model.ours import ContextVAE
+from model.vae import ContextVAE
 from utility import trainutil
 
 if __name__ == "__main__":
