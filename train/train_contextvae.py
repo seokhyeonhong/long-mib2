@@ -139,7 +139,7 @@ if __name__ == "__main__":
                         "smooth": 0,
                         "traj": 0,
                     }
-                    for GT_motion in tqdm(val_dataloader, desc="Validation"):
+                    for GT_motion in tqdm(val_dataloader, desc="Validation", leave=False):
                         transition = config.max_transition
                         T = config.context_frames + transition + 1
                         GT_motion = GT_motion[:, :T, :].to(device)

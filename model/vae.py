@@ -180,7 +180,8 @@ class ContextDecoder(nn.Module):
 
         # fill in missing frames with z
         mask = get_mask(motion, self.config.context_frames)
-        x = self.motion_encoder(torch.cat([motion*mask, mask], dim=-1))
+        x = motion * mask + z * (1 - mask)
+        x = self.motion_encoder(torch.cat([x, mask], dim=-1))
         context = self.traj_encoder(traj)
 
         # relative positional encoding
