@@ -16,7 +16,7 @@ from pymovis.ops import motionops, rotation, mathops
 
 from utility.dataset import MotionDataset
 from utility.config import Config
-from model.vae import ContextVAE
+from model.vae import VAE
 from utility import trainutil
 
 if __name__ == "__main__":
@@ -42,7 +42,7 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = ContextVAE(dataset.shape[-1], config).to(device)
+    model = VAE(dataset.shape[-1], config, is_context=True).to(device)
     optim = torch.optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.98), eps=1e-9)
     init_epoch, iter = trainutil.load_latest_ckpt(model, optim, config)
     init_iter = iter
@@ -84,7 +84,7 @@ if __name__ == "__main__":
             """ 2. Forward ContextVAE """
             # normalize - forward - denormalize
             GT_batch = (GT_motion - motion_mean) / motion_std
-            pred_motion, pred_mu, pred_logvar = model(GT_batch, GT_traj)
+            pred_motion, _, pred_mu, pred_logvar = model.forward(GT_batch, GT_traj)
             pred_motion = pred_motion * motion_std + motion_mean
 
             # predicted motion data
@@ -160,7 +160,7 @@ if __name__ == "__main__":
                         """ 2. Forward ContextVAE """
                         # normalize - forward - denormalize
                         GT_batch = (GT_motion - motion_mean) / motion_std
-                        pred_motion = model.sample(GT_batch, GT_traj)
+                        pred_motion, _ = model.sample(GT_batch, GT_traj)
                         pred_motion = pred_motion * motion_std + motion_mean
 
                         # predicted motion data

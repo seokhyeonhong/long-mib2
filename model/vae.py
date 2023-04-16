@@ -25,12 +25,18 @@ def get_keyframe_relative_position(window_length, context_frames):
 
     return p_kf
 
+def reparameterize(mu, logvar):
+    std = torch.exp(0.5*logvar)
+    eps = torch.randn_like(std)
+    return mu + eps*std
+    
 """ ContextVAE """
-class ContextEncoder(nn.Module):
-    def __init__(self, d_motion, config):
-        super(ContextEncoder, self).__init__()
+class Encoder(nn.Module):
+    def __init__(self, d_motion, config, is_context=True):
+        super(Encoder, self).__init__()
         self.d_motion       = d_motion
         self.config         = config
+        self.is_context     = is_context
     
         self.d_model        = config.d_model
         self.n_layers       = config.n_layers
@@ -84,7 +90,7 @@ class ContextEncoder(nn.Module):
             nn.Linear(self.d_model, self.d_model),
             nn.PReLU(),
             nn.Dropout(self.dropout),
-            nn.Linear(self.d_model, self.d_motion),
+            nn.Linear(self.d_model, self.d_motion if self.is_context else self.d_model),
         )
 
     def forward(self, x):
@@ -117,12 +123,13 @@ class ContextEncoder(nn.Module):
         mu, logvar = x[:, 0], x[:, 1]
 
         return mu, logvar
-
-class ContextDecoder(nn.Module):
-    def __init__(self, d_motion, config):
-        super(ContextDecoder, self).__init__()
+    
+class Decoder(nn.Module):
+    def __init__(self, d_motion, config, is_context=True):
+        super(Decoder, self).__init__()
         self.d_motion       = d_motion
         self.config         = config
+        self.is_context     = is_context
     
         self.d_model        = config.d_model
         self.n_layers       = config.n_layers
@@ -181,19 +188,22 @@ class ContextDecoder(nn.Module):
         self.decoder = nn.Sequential(
             nn.Linear(self.d_model, self.d_model),
             nn.PReLU(),
-            nn.Linear(self.d_model, self.d_motion),
+            nn.Linear(self.d_model, self.d_motion if self.is_context else self.d_motion + 4),
         )
     
-    def forward(self, motion, traj, z):
+    def forward(self, motion, traj, z, mask=None):
         B, T, D = motion.shape
 
         # original motion
         original_motion = motion.clone()
 
-        # fill in missing frames with z
-        mask = get_mask(motion, self.config.context_frames)
-        x = motion * mask + z * (1 - mask)
-        x = self.motion_encoder(torch.cat([x, mask], dim=-1))
+        # mask out and infill with z
+        if self.is_context:
+            mask = get_mask(motion, self.config.context_frames)
+            motion = motion * mask + z * (1 - mask)
+
+        # encoders
+        x = self.motion_encoder(torch.cat([motion, mask], dim=-1))
         context = self.traj_encoder(traj)
 
         # relative positional encoding
@@ -203,7 +213,7 @@ class ContextDecoder(nn.Module):
 
         # Transformer layers
         for i in range(self.n_layers):
-            x = self.atten_layers[i](x, x, lookup_table=rel_pos)
+            x = self.atten_layers[i](x, x if self.is_context else z, lookup_table=rel_pos)
             x = self.cross_layers[i](x, context, lookup_table=rel_pos)
             x = self.pffn_layers[i](x)
 
@@ -214,36 +224,37 @@ class ContextDecoder(nn.Module):
         x = self.decoder(x)
 
         # unmask original motion
-        x = x * (1 - mask) + original_motion * mask
+        x[..., :D] = x[..., :D] * (1 - mask) + original_motion * mask
 
-        return x
+        # contact
+        if not self.is_context:
+            x[..., -4:] = torch.sigmoid(x[..., -4:])
+
+        return x, mask
+
+class VAE(nn.Module):
+    def __init__(self, d_motion, config, is_context):
+        super(VAE, self).__init__()
+
+        self.d_motion   = d_motion
+        self.config     = config
+        self.is_context = is_context
+
+        self.encoder = Encoder(d_motion, config, is_context=is_context)
+        self.decoder = Decoder(d_motion, config, is_context=is_context)
     
-class ContextVAE(nn.Module):
-    def __init__(self, d_motion, config):
-        super(ContextVAE, self).__init__()
-
-        self.d_motion = d_motion
-        self.config = config
-
-        self.encoder = ContextEncoder(d_motion, config)
-        self.decoder = ContextDecoder(d_motion, config)
-    
-    def forward(self, motion, traj):
+    def forward(self, motion, traj, mask=None):
         B, T, D = motion.shape
 
-        mu, logvar = self.encoder(motion)
-        z = self.reparameterize(mu.unsqueeze(1).repeat(1, T, 1), logvar.unsqueeze(1).repeat(1, T, 1))
+        mu, logvar = self.encoder.forward(motion)
+        z = reparameterize(mu.unsqueeze(1).repeat(1, T, 1), logvar.unsqueeze(1).repeat(1, T, 1))
 
-        recon = self.decoder(motion, traj, z)
+        recon, mask = self.decoder.forward(motion, traj, z, mask=mask)
         
-        return recon, mu, logvar
+        return recon, mask, mu, logvar
     
-    def reparameterize(self, mu, logvar):
-        std = torch.exp(0.5*logvar)
-        eps = torch.randn_like(std)
-        return mu + eps*std
-    
-    def sample(self, motion, traj):
+    def sample(self, motion, traj, mask=None):
         B, T, D = motion.shape
-        z = torch.randn(B, T, D, dtype=motion.dtype, device=motion.device)
-        return self.decoder(motion, traj, z)
+        z = torch.randn(B, T, self.d_motion if self.is_context else self.config.d_model, dtype=motion.dtype, device=motion.device)
+        pred_motion, mask = self.decoder.forward(motion, traj, z, mask=mask)
+        return pred_motion, mask

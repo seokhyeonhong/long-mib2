@@ -12,13 +12,13 @@
     "contact_joint_names": ["LeftFoot", "LeftToeBase", "RightFoot", "RightToeBase"],
     "contact_vel_threshold": 2e-4,
 
-    "log_dir": "log/ContextGAN",
+    "log_dir": "log/DetailVAE",
     "log_interval": 100,
 
-    "save_dir": "save/ContextGAN",
+    "save_dir": "save/DetailVAE",
     "save_interval": 10000,
 
-    "val_interval": 1000,
+    "val_interval": 100,
 
     "batch_size": 64,
     "epochs": 1000,
@@ -34,7 +34,8 @@
     "pre_layernorm": true,
 
     "weight_pose": 1.0,
-    "weight_smooth": 0.5,
     "weight_traj": 0.5,
-    "weight_adv": 0.1
+    "weight_contact": 0.05,
+    "weight_foot": 0.05,
+    "weight_kl": 0.1
 }

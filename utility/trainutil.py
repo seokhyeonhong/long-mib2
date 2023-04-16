@@ -69,3 +69,7 @@ def loss_disc(disc_fake, disc_real):
 def loss_gen(disc_fake):
     # non-saturating loss
     return -torch.mean(torch.log(disc_fake + 1e-8))
+
+def loss_foot(contact, foot_vel):
+    error = contact * foot_vel
+    return F.l1_loss(error, torch.zeros_like(error))
