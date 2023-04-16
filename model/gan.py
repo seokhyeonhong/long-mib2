@@ -25,57 +25,6 @@ def get_keyframe_relative_position(window_length, context_frames):
 
     return p_kf
 
-def _get_interpolated_motion(local_R, root_p, keyframes):
-    R, p = local_R.clone(), root_p.clone()
-    for i in range(len(keyframes) - 1):
-        kf1, kf2 = keyframes[i], keyframes[i+1]
-        t = torch.arange(0, 1, 1/(kf2-kf1), dtype=R.dtype, device=R.device).unsqueeze(-1)
-        
-        # interpolate joint orientations
-        R1 = R[:, kf1].unsqueeze(1)
-        R2 = R[:, kf2].unsqueeze(1)
-        R_diff = torch.matmul(R1.transpose(-1, -2), R2)
-
-        angle_diff, axis_diff = rotation.R_to_A(R_diff)
-        angle_diff = t * angle_diff
-        axis_diff = axis_diff.repeat(1, len(t), 1, 1)
-        R_diff = rotation.A_to_R(angle_diff, axis_diff)
-
-        R[:, kf1:kf2] = torch.matmul(R1, R_diff)
-
-        # interpolate root positions
-        p1 = p[:, kf1].unsqueeze(1)
-        p2 = p[:, kf2].unsqueeze(1)
-        p[:, kf1:kf2] = p1 + t * (p2 - p1)
-    
-    R6 = rotation.R_to_R6(R).reshape(R.shape[0], R.shape[1], -1)
-    return torch.cat([R6, p], dim=-1)
-
-def _get_random_keyframes(t_ctx, t_max, t_total):
-    keyframes = [t_ctx-1]
-
-    transition_start = t_ctx
-    while transition_start + t_max < t_total - 1:
-        transition_end = min(transition_start + t_max, t_total - 1)
-        kf = random.randint(transition_start + 5, transition_end)
-        keyframes.append(kf)
-        transition_start = kf
-
-    if keyframes[-1] != t_total - 1:
-        keyframes.append(t_total - 1)
-    
-    return keyframes
-
-def _get_mask_by_keyframe(x, t_ctx, keyframes=None):
-    B, T, D = x.shape
-    mask = torch.zeros(B, T, 1, dtype=x.dtype, device=x.device)
-    mask[:, :t_ctx] = 1
-    mask[:, -1] = 1
-    if keyframes is not None:
-        mask[:, keyframes] = 1
-    return mask
-
-""" ContextGAN """
 class ContextGenerator(nn.Module):
     def __init__(self, d_motion, config):
         super(ContextGenerator, self).__init__()
@@ -145,9 +94,12 @@ class ContextGenerator(nn.Module):
     def forward(self, motion, traj):
         B, T, D = motion.shape
 
+        # original motion
+        original_motion = motion.clone()
+
         # fill in missing frames with z
-        mask = get_mask(motion, self.config.context_frames)
-        z    = torch.randn_like(motion)
+        mask   = get_mask(motion, self.config.context_frames)
+        z      = torch.randn_like(motion)
         motion = mask * motion + (1-mask) * z
 
         # encoder
@@ -171,11 +123,112 @@ class ContextGenerator(nn.Module):
         # decoder
         x = self.decoder(x)
 
+        # unmask original motion
+        x = x * (1 - mask) + original_motion * mask
+
+        return x, mask
+
+class DetailGenerator(nn.Module):
+    def __init__(self, d_motion, config):
+        super(DetailGenerator, self).__init__()
+        self.d_motion       = d_motion
+        self.config         = config
+    
+        self.d_model        = config.d_model
+        self.n_layers       = config.n_layers
+        self.n_heads        = config.n_heads
+        self.d_head         = self.d_model // self.n_heads
+        self.d_ff           = config.d_ff
+        self.pre_layernorm  = config.pre_layernorm
+        self.dropout        = config.dropout
+
+        self.fps            = config.fps
+        self.context_frames = config.context_frames
+
+        if self.d_model % self.n_heads != 0:
+            raise ValueError(f"d_model must be divisible by num_heads, but d_model={self.d_model} and num_heads={self.n_heads}")
+        
+        # encoders
+        self.motion_encoder = nn.Sequential(
+            nn.Linear(self.d_motion + 1, self.d_model), # (motion + mask)
+            nn.PReLU(),
+            nn.Dropout(self.dropout),
+            nn.Linear(self.d_model, self.d_model),
+            nn.PReLU(),
+            nn.Dropout(self.dropout),
+        )
+        self.traj_encoder = nn.Sequential(
+            nn.Linear(3, self.d_model),
+            nn.PReLU(),
+            nn.Dropout(self.dropout),
+            nn.Linear(self.d_model, self.d_model),
+            nn.PReLU(),
+            nn.Dropout(self.dropout),
+        )
+
+        # relative positional encoder
+        self.relative_pos_encoder = nn.Sequential(
+            nn.Linear(1, self.d_model),
+            nn.PReLU(),
+            nn.Dropout(self.dropout),
+            nn.Linear(self.d_model, self.d_head),
+            nn.Dropout(self.dropout),
+        )
+        self.relative_pos = nn.Parameter(torch.arange(-self.config.fps//2, self.config.fps//2+1).unsqueeze(-1).float(), requires_grad=False)
+
+        # Transformer layers
+        self.layer_norm = nn.LayerNorm(self.d_model)
+        self.atten_layers = nn.ModuleList()
+        self.cross_layers = nn.ModuleList()
+        self.pffn_layers  = nn.ModuleList()
+        
+        for _ in range(self.n_layers):
+            self.atten_layers.append(LocalMultiHeadAttention(self.d_model, self.d_head, self.n_heads, self.fps+1, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
+            self.cross_layers.append(LocalMultiHeadAttention(self.d_model, self.d_head, self.n_heads, self.fps+1, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
+            self.pffn_layers.append(PoswiseFeedForwardNet(self.d_model, self.d_ff, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
+
+        # decoder
+        self.decoder = nn.Sequential(
+            nn.Linear(self.d_model, self.d_model),
+            nn.PReLU(),
+            nn.Linear(self.d_model, self.d_motion),
+        )
+    
+    def forward(self, motion, traj, mask):
+        B, T, D = motion.shape
+
+        # original motion
+        original_motion = motion.clone()
+
+        # encoder
+        x = self.motion_encoder(torch.cat([motion, mask], dim=-1))
+        context = self.traj_encoder(traj)
+
+        # relative positional encoding
+        pad_len = T-self.fps//2-1
+        rel_pos = self.relative_pos_encoder(self.relative_pos)
+        rel_pos = F.pad(rel_pos, (0, 0, pad_len, pad_len), value=0)
+
+        # Transformer layers
+        for i in range(self.n_layers):
+            x = self.atten_layers[i](x, x, lookup_table=rel_pos)
+            x = self.cross_layers[i](x, context, lookup_table=rel_pos)
+            x = self.pffn_layers[i](x)
+
+        if self.pre_layernorm:
+            x = self.layer_norm(x)
+
+        # decoder
+        x = self.decoder(x)
+
+        # unmask original motion
+        x = x * (1 - mask) + original_motion * mask
+
         return x
 
-class ContextDiscriminator(nn.Module):
+class Discriminator(nn.Module):
     def __init__(self, d_motion, config):
-        super(ContextDiscriminator, self).__init__()
+        super(Discriminator, self).__init__()
         
         self.d_motion = d_motion
         self.config   = config
@@ -224,10 +277,27 @@ class ContextGAN(nn.Module):
         super(ContextGAN, self).__init__()
         
         self.generator     = ContextGenerator(d_motion, config)
-        self.discriminator = ContextDiscriminator(d_motion, config)
+        self.discriminator = Discriminator(d_motion, config)
 
     def generate(self, motion, traj):
-        return self.generator.forward(motion, traj)
+        motion, mask = self.generator.forward(motion, traj)
+        return motion, mask
     
     def discriminate(self, motion):
-        return self.discriminator.forward(motion)
+        short, long = self.discriminator.forward(motion)
+        return short, long
+
+class DetailGAN(nn.Module):
+    def __init__(self, d_motion, config):
+        super(DetailGAN, self).__init__()
+        
+        self.generator     = DetailGenerator(d_motion, config)
+        self.discriminator = Discriminator(d_motion, config)
+    
+    def generate(self, motion, traj, mask):
+        motion, mask = self.generator.forward(motion, traj, mask)
+        return motion, mask
+    
+    def discriminate(self, motion):
+        short, long = self.discriminator.forward(motion)
+        return short, long

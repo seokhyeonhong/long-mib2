@@ -25,56 +25,6 @@ def get_keyframe_relative_position(window_length, context_frames):
 
     return p_kf
 
-def _get_interpolated_motion(local_R, root_p, keyframes):
-    R, p = local_R.clone(), root_p.clone()
-    for i in range(len(keyframes) - 1):
-        kf1, kf2 = keyframes[i], keyframes[i+1]
-        t = torch.arange(0, 1, 1/(kf2-kf1), dtype=R.dtype, device=R.device).unsqueeze(-1)
-        
-        # interpolate joint orientations
-        R1 = R[:, kf1].unsqueeze(1)
-        R2 = R[:, kf2].unsqueeze(1)
-        R_diff = torch.matmul(R1.transpose(-1, -2), R2)
-
-        angle_diff, axis_diff = rotation.R_to_A(R_diff)
-        angle_diff = t * angle_diff
-        axis_diff = axis_diff.repeat(1, len(t), 1, 1)
-        R_diff = rotation.A_to_R(angle_diff, axis_diff)
-
-        R[:, kf1:kf2] = torch.matmul(R1, R_diff)
-
-        # interpolate root positions
-        p1 = p[:, kf1].unsqueeze(1)
-        p2 = p[:, kf2].unsqueeze(1)
-        p[:, kf1:kf2] = p1 + t * (p2 - p1)
-    
-    R6 = rotation.R_to_R6(R).reshape(R.shape[0], R.shape[1], -1)
-    return torch.cat([R6, p], dim=-1)
-
-def _get_random_keyframes(t_ctx, t_max, t_total):
-    keyframes = [t_ctx-1]
-
-    transition_start = t_ctx
-    while transition_start + t_max < t_total - 1:
-        transition_end = min(transition_start + t_max, t_total - 1)
-        kf = random.randint(transition_start + 5, transition_end)
-        keyframes.append(kf)
-        transition_start = kf
-
-    if keyframes[-1] != t_total - 1:
-        keyframes.append(t_total - 1)
-    
-    return keyframes
-
-def _get_mask_by_keyframe(x, t_ctx, keyframes=None):
-    B, T, D = x.shape
-    mask = torch.zeros(B, T, 1, dtype=x.dtype, device=x.device)
-    mask[:, :t_ctx] = 1
-    mask[:, -1] = 1
-    if keyframes is not None:
-        mask[:, keyframes] = 1
-    return mask
-
 """ ContextVAE """
 class ContextEncoder(nn.Module):
     def __init__(self, d_motion, config):
@@ -225,6 +175,9 @@ class ContextDecoder(nn.Module):
     def forward(self, motion, traj, z):
         B, T, D = motion.shape
 
+        # original motion
+        original_motion = motion.clone()
+
         # fill in missing frames with z
         mask = get_mask(motion, self.config.context_frames)
         x = self.motion_encoder(torch.cat([motion*mask, mask], dim=-1))
@@ -247,6 +200,9 @@ class ContextDecoder(nn.Module):
         # decoder
         x = self.decoder(x)
 
+        # unmask original motion
+        x = x * (1 - mask) + original_motion * mask
+
         return x
     
 class ContextVAE(nn.Module):
@@ -263,9 +219,7 @@ class ContextVAE(nn.Module):
         B, T, D = motion.shape
 
         mu, logvar = self.encoder(motion)
-        mu = mu.unsqueeze(1).repeat(1, T, 1)
-        logvar = logvar.unsqueeze(1).repeat(1, T, 1)
-        z = self.reparameterize(mu, logvar)
+        z = self.reparameterize(mu.unsqueeze(1).repeat(1, T, 1), logvar.unsqueeze(1).repeat(1, T, 1))
 
         recon = self.decoder(motion, traj, z)
         
