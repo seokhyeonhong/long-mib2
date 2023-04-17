@@ -163,7 +163,7 @@ class EncoderWithMask(nn.Module):
             self.atten_layers.append(LocalMultiHeadAttention(self.d_model, self.d_head, self.n_heads, self.fps+1, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
             self.pffn_layers.append(PoswiseFeedForwardNet(self.d_model, self.d_ff, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
 
-    def forward(self, x, mask):
+    def forward(self, x):
         B, T, D = x.shape
 
         # motion encoder
