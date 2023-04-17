@@ -22,7 +22,7 @@ from utility import trainutil
 if __name__ == "__main__":
     # initial settings with all possible gpus
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = Config.load("configs/context_vae.json")
+    config = Config.load("configs/context_vae_withmask.json")
     util.seed()
 
     # dataset
