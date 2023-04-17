@@ -53,25 +53,13 @@ def get_noam_scheduler(config, optim):
 def loss_kl(mu, logvar):
     return torch.mean(-0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1))
 
-def loss_recon(recon, x, config):
-    B, T, D = x.shape
-    t = torch.arange(T, device=x.device).unsqueeze(-1)
-    t = torch.min(torch.abs(t - config.context_frames), torch.abs((T-1) - t)) / config.fps
-    t = torch.clip(t, 0, 1)
-    t = 1 - t
-
-    loss = torch.mean(torch.abs(recon - x) * t)
+def loss_recon(recon, x):
+    loss = torch.mean(torch.abs(recon - x))
     return loss
 
-def loss_traj(recon, x, config):
-    B, T, D = x.shape
-    t = torch.arange(T, device=x.device).unsqueeze(-1)
-    t = torch.min(torch.abs(t - config.context_frames), torch.abs((T-1) - t)) / config.fps
-    t = torch.clip(t, 0, 1)
-    t = 1 - t
-
-    loss_xz = torch.mean(torch.abs(recon[:, :, :2] - x[:, :, :2]) * t)
-    loss_fwd = torch.mean((1 - (recon[..., 2:] * x[..., 2:])) * t)
+def loss_traj(recon, x):
+    loss_xz = torch.mean(torch.abs(recon[..., :2] - x[..., :2]))
+    loss_fwd = torch.mean(1 - torch.sum(recon[..., 2:] * x[..., 2:], dim=-1))
     return loss_xz + loss_fwd
 
 def loss_smooth(x):

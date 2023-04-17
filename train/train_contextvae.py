@@ -19,6 +19,33 @@ from utility.config import Config
 from model.vae import VAE
 from utility import trainutil
 
+def get_motion_and_trajectory(motion, skeleton):
+    B, T, D = motion.shape
+
+    # motion
+    local_R6, root_p = torch.split(motion, [D-3, 3], dim=-1)
+    _, global_p = motionops.R6_fk(local_R6.reshape(B, T, -1, 6), root_p, skeleton)
+
+    # trajectory
+    root_xz = root_p[..., (0, 2)]
+    root_fwd = torch.matmul(rotation.R6_to_R(local_R6[..., :6]), torchconst.FORWARD(motion.device))
+    root_fwd = F.normalize(root_fwd * torchconst.XZ(motion.device), dim=-1)
+    traj = torch.cat([root_xz, root_fwd], dim=-1)
+
+    return local_R6.reshape(B, T, -1), global_p.reshape(B, T, -1), traj
+
+
+def get_mask(batch, context_frames):
+    B, T, D = batch.shape
+
+    # 0 for unknown frames, 1 for known frames
+    batch_mask = torch.ones_like(batch)
+    batch_mask[:, context_frames:-1, :] = 0
+
+    # TODO: Add probability of unmasking
+
+    return batch_mask
+
 if __name__ == "__main__":
     # initial settings with all possible gpus
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -70,39 +97,22 @@ if __name__ == "__main__":
             B, T, D = GT_motion.shape
 
             """ 1. GT motion data """
-            # motion
-            GT_local_R6, GT_root_p = torch.split(GT_motion, [D-3, 3], dim=-1)
-            _, GT_global_p = motionops.R6_fk(GT_local_R6.reshape(B, T, -1, 6), GT_root_p, skeleton)
-
-            # trajectory
-            GT_root_xz    = GT_root_p[..., (0, 2)]
-            GT_root_fwd   = torch.matmul(rotation.R6_to_R(GT_local_R6[..., :6]), v_forward)
-            GT_root_fwd   = F.normalize(GT_root_fwd * torchconst.XZ(device), dim=-1)
-            GT_root_angle = torch.atan2(GT_root_fwd[..., 0], GT_root_fwd[..., 2]) # arctan2(x, z)
-            GT_traj       = torch.cat([GT_root_xz, GT_root_angle.unsqueeze(-1)], dim=-1)
-
+            GT_local_R6, GT_global_p, GT_traj = get_motion_and_trajectory(GT_motion, skeleton)
+            
             """ 2. Forward ContextVAE """
             # normalize - forward - denormalize
             GT_batch = (GT_motion - motion_mean) / motion_std
-            pred_motion, _, pred_mu, pred_logvar = model.forward(GT_batch, GT_traj)
+            mask     = get_mask(GT_batch, config.context_frames)
+            pred_motion, pred_mu, pred_logvar = model.forward(GT_batch, GT_traj, mask)
             pred_motion = pred_motion * motion_std + motion_mean
 
             # predicted motion data
-            pred_local_R6, pred_root_p = torch.split(pred_motion, [D-3, 3], dim=-1)
-            _, pred_global_p = motionops.R6_fk(pred_local_R6.reshape(B, T, -1, 6), pred_root_p, skeleton)
-
-            # predicted trajectory
-            pred_root_xz    = pred_root_p[..., (0, 2)]
-            pred_root_fwd   = torch.matmul(rotation.R6_to_R(pred_local_R6[..., :6]), v_forward)
-            pred_root_fwd   = F.normalize(pred_root_fwd * torchconst.XZ(device), dim=-1)
-            pred_root_angle = torch.atan2(pred_root_fwd[..., 0], pred_root_fwd[..., 2]) # arctan2(x, z)
+            pred_local_R6, pred_global_p, pred_traj = get_motion_and_trajectory(pred_motion, skeleton)
 
             """ 3. Loss """
-            loss_pose = config.weight_pose * (trainutil.loss_recon(pred_global_p, GT_global_p)\
-                                              + trainutil.loss_recon(pred_local_R6, GT_local_R6))
-            loss_smooth = config.weight_smooth * (trainutil.loss_smooth(pred_global_p)\
-                                                  + trainutil.loss_smooth(pred_local_R6))
-            loss_traj = config.weight_traj * (trainutil.loss_recon(pred_root_xz, GT_root_xz))
+            loss_pose = config.weight_pose * (trainutil.loss_recon(pred_global_p, GT_global_p) + trainutil.loss_recon(pred_local_R6, GT_local_R6))
+            loss_smooth = config.weight_smooth * (trainutil.loss_smooth(pred_global_p) + trainutil.loss_smooth(pred_local_R6))
+            loss_traj = config.weight_traj * (trainutil.loss_traj(pred_traj, GT_traj))
             loss_kl   = config.weight_kl * trainutil.loss_kl(pred_mu, pred_logvar)
             loss = loss_pose + loss_smooth + loss_traj + loss_kl
 
@@ -146,39 +156,22 @@ if __name__ == "__main__":
                         B, T, D = GT_motion.shape
                         
                         """ 1. GT motion data """
-                        # motion
-                        GT_local_R6, GT_root_p = torch.split(GT_motion, [D-3, 3], dim=-1)
-                        _, GT_global_p = motionops.R6_fk(GT_local_R6.reshape(B, T, -1, 6), GT_root_p, skeleton)
-
-                        # trajectory
-                        GT_root_xz    = GT_root_p[..., (0, 2)]
-                        GT_root_fwd   = torch.matmul(rotation.R6_to_R(GT_local_R6[..., :6]), v_forward)
-                        GT_root_fwd   = F.normalize(GT_root_fwd * torchconst.XZ(device), dim=-1)
-                        GT_root_angle = torch.atan2(GT_root_fwd[..., 0], GT_root_fwd[..., 2]) # arctan2(x, z)
-                        GT_traj       = torch.cat([GT_root_xz, GT_root_angle.unsqueeze(-1)], dim=-1)
+                        GT_local_R6, GT_global_p, GT_traj = get_motion_and_trajectory(GT_motion, skeleton)
 
                         """ 2. Forward ContextVAE """
                         # normalize - forward - denormalize
                         GT_batch = (GT_motion - motion_mean) / motion_std
-                        pred_motion, _ = model.sample(GT_batch, GT_traj)
+                        mask     = get_mask(GT_batch, config.context_frames)
+                        pred_motion = model.sample(GT_batch, GT_traj, mask)
                         pred_motion = pred_motion * motion_std + motion_mean
 
                         # predicted motion data
-                        pred_local_R6, pred_root_p = torch.split(pred_motion, [D-3, 3], dim=-1)
-                        _, pred_global_p = motionops.R6_fk(pred_local_R6.reshape(B, T, -1, 6), pred_root_p, skeleton)
-
-                        # predicted trajectory
-                        pred_root_xz    = pred_root_p[..., (0, 2)]
-                        pred_root_fwd   = torch.matmul(rotation.R6_to_R(pred_local_R6[..., :6]), v_forward)
-                        pred_root_fwd   = F.normalize(pred_root_fwd * torchconst.XZ(device), dim=-1)
-                        pred_root_angle = torch.atan2(pred_root_fwd[..., 0], pred_root_fwd[..., 2]) # arctan2(x, z)
+                        pred_local_R6, pred_global_p, pred_traj = get_motion_and_trajectory(pred_motion, skeleton)
 
                         """ 3. Loss """
-                        loss_pose = config.weight_pose * (trainutil.loss_recon(pred_global_p, GT_global_p)\
-                                                        + trainutil.loss_recon(pred_local_R6, GT_local_R6))
-                        loss_smooth = config.weight_smooth * (trainutil.loss_smooth(pred_global_p)\
-                                                            + trainutil.loss_smooth(pred_local_R6))
-                        loss_traj = config.weight_traj * (trainutil.loss_recon(pred_root_xz, GT_root_xz))
+                        loss_pose = config.weight_pose * (trainutil.loss_recon(pred_global_p, GT_global_p) + trainutil.loss_recon(pred_local_R6, GT_local_R6))
+                        loss_smooth = config.weight_smooth * (trainutil.loss_smooth(pred_global_p) + trainutil.loss_smooth(pred_local_R6))
+                        loss_traj = config.weight_traj * (trainutil.loss_traj(pred_traj, GT_traj))
                         loss = loss_pose + loss_smooth + loss_traj + loss_kl
 
                         # log
