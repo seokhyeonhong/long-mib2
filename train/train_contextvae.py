@@ -84,7 +84,8 @@ if __name__ == "__main__":
             """ 2. Forward ContextVAE """
             # normalize - forward - denormalize
             GT_batch = (GT_motion - motion_mean) / motion_std
-            pred_motion, _, pred_mu, pred_logvar = model.forward(GT_batch, GT_traj)
+            p_unmask = max(0, (50-epoch) / 50)
+            pred_motion, _, pred_mu, pred_logvar = model.forward(GT_batch, GT_traj, p_unmask=p_unmask)
             pred_motion = pred_motion * motion_std + motion_mean
 
             # predicted motion data

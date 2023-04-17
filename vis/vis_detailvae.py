@@ -79,9 +79,14 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = VAE(dataset.shape[-1], config, is_context=True).to(device)
-    testutil.load_model(model, config)
-    model.eval()
+    ctx_vae = VAE(dataset.shape[-1], config, is_context=True).to(device)
+    testutil.load_model(ctx_vae, config)
+    ctx_vae.eval()
+
+    det_config = Config.load("configs/detail_vae.json")
+    det_vae = VAE(dataset.shape[-1], det_config, is_context=False).to(device)
+    testutil.load_model(det_vae, det_config)
+    det_vae.eval()
 
     # character
     ybot = FBX("dataset/ybot.fbx")
@@ -106,21 +111,22 @@ if __name__ == "__main__":
             GT_traj       = torch.cat([GT_root_xz, GT_root_angle.unsqueeze(-1)], dim=-1)
 
             """ 1-1. Modify Trajectory """
-            traj_from = GT_traj[:, config.context_frames-1, -3:].unsqueeze(1)
-            traj_to   = GT_traj[:, -1, -3:].unsqueeze(1)
-            t = torch.linspace(0, 1, T - config.context_frames + 1)[:, None].to(device)
-            GT_traj[:, config.context_frames-1:, -3:] = traj_from + (traj_to - traj_from) * t
-            GT_traj[:, config.context_frames:, -3] = torch.linspace(0, torch.pi, T - config.context_frames)[None, :].to(device)
-            GT_traj[:, config.context_frames:, -2] = torch.sin(GT_traj[:, config.context_frames:, -3])
-            GT_traj[:, config.context_frames:, -1] = GT_traj[:, config.context_frames-1, -1].unsqueeze(1).clone()
+            # traj_from = GT_traj[:, config.context_frames-1, -3:].unsqueeze(1)
+            # traj_to   = GT_traj[:, -1, -3:].unsqueeze(1)
+            # t = torch.linspace(0, 1, T - config.context_frames + 1)[:, None].to(device)
+            # GT_traj[:, config.context_frames-1:, -3:] = traj_from + (traj_to - traj_from) * t
+            # GT_traj[:, config.context_frames:, -3] = torch.linspace(0, torch.pi, T - config.context_frames)[None, :].to(device)
+            # GT_traj[:, config.context_frames:, -2] = torch.sin(GT_traj[:, config.context_frames:, -3])
+            # GT_traj[:, config.context_frames:, -1] = GT_traj[:, config.context_frames-1, -1].unsqueeze(1).clone()
 
-            GT_root_p[:, -1, (0, 2)] = GT_traj[:, -1, (-3, -2)]
-            GT_local_R[:, -1, 0] = GT_local_R[:, config.context_frames-1, 0]
+            # GT_root_p[:, -1, (0, 2)] = GT_traj[:, -1, (-3, -2)]
+            # GT_local_R[:, -1, 0] = GT_local_R[:, config.context_frames-1, 0]
 
             """ 2. Sample """
             # normalize - forward - denormalize
             GT_batch = (GT_motion - motion_mean) / motion_std
-            pred_motion, _ = model.sample(GT_batch, GT_traj)
+            pred_motion, mask = ctx_vae.sample(GT_batch, GT_traj)
+            pred_motion, mask = det_vae.sample(pred_motion, GT_traj, mask)
             pred_motion = pred_motion * motion_std + motion_mean
 
             # predicted motion data

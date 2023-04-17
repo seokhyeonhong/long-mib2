@@ -8,12 +8,18 @@ from pymovis.ops import rotation, motionops
 from pymovis.learning.mlp import MultiLinear
 from pymovis.learning.transformer import MultiHeadAttention, PoswiseFeedForwardNet, LocalMultiHeadAttention
 
-def get_mask(batch, context_frames):
+def get_mask(batch, context_frames, p_unmask=0.0):
     B, T, D = batch.shape
 
     # 0 for unknown frames, 1 for known frames
     batch_mask = torch.ones(B, T, 1, dtype=batch.dtype, device=batch.device)
     batch_mask[:, context_frames:-1, :] = 0
+
+    # schedule sampling
+    frames  = torch.arange(T)
+    samples = torch.rand(T)
+    batch_mask[:, frames[samples < p_unmask], :] = 1
+
     return batch_mask
 
 def get_keyframe_relative_position(window_length, context_frames):
@@ -191,7 +197,7 @@ class Decoder(nn.Module):
             nn.Linear(self.d_model, self.d_motion if self.is_context else self.d_motion + 4),
         )
     
-    def forward(self, motion, traj, z, mask=None):
+    def forward(self, motion, traj, z, mask=None, p_unmask=0.0):
         B, T, D = motion.shape
 
         # original motion
@@ -199,7 +205,7 @@ class Decoder(nn.Module):
 
         # mask out and infill with z
         if self.is_context:
-            mask = get_mask(motion, self.config.context_frames)
+            mask = get_mask(motion, self.config.context_frames, p_unmask=p_unmask)
             motion = motion * mask + z * (1 - mask)
 
         # encoders
@@ -243,13 +249,13 @@ class VAE(nn.Module):
         self.encoder = Encoder(d_motion, config, is_context=is_context)
         self.decoder = Decoder(d_motion, config, is_context=is_context)
     
-    def forward(self, motion, traj, mask=None):
+    def forward(self, motion, traj, mask=None, p_unmask=0.0):
         B, T, D = motion.shape
 
         mu, logvar = self.encoder.forward(motion)
         z = reparameterize(mu.unsqueeze(1).repeat(1, T, 1), logvar.unsqueeze(1).repeat(1, T, 1))
 
-        recon, mask = self.decoder.forward(motion, traj, z, mask=mask)
+        recon, mask = self.decoder.forward(motion, traj, z, mask=mask, p_unmask=p_unmask)
         
         return recon, mask, mu, logvar
     
