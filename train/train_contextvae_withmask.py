@@ -16,7 +16,7 @@ from pymovis.ops import motionops, rotation, mathops
 
 from utility.dataset import MotionDataset
 from utility.config import Config
-from model.vae import VAE
+from model.vae import VAEWithMask
 from utility import trainutil
 
 if __name__ == "__main__":
@@ -42,7 +42,7 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = VAE(dataset.shape[-1], config, is_context=True).to(device)
+    model = VAEWithMask(dataset.shape[-1], config, is_context=True).to(device)
     optim = torch.optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.98), eps=1e-9)
     init_epoch, iter = trainutil.load_latest_ckpt(model, optim, config)
     init_iter = iter
