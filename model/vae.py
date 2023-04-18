@@ -44,12 +44,12 @@ class Encoder(nn.Module):
             raise ValueError(f"d_model must be divisible by num_heads, but d_model={self.d_model} and num_heads={self.n_heads}")
         
         # VAE token
-        self.mu_token = nn.Parameter(torch.randn(1, 1, self.d_model))
-        self.logvar_token = nn.Parameter(torch.randn(1, 1, self.d_model))
+        self.mu_token = nn.Parameter(torch.zeros(1, 1, self.d_model), requires_grad=False)
+        self.logvar_token = nn.Parameter(torch.zeros(1, 1, self.d_model), requires_grad=False)
 
         # encoders
         self.motion_encoder = nn.Sequential(
-            nn.Linear(self.d_motion * 2 + 5, self.d_model), # (motion, mask) + traj(=5)
+            nn.Linear(self.d_motion + 5, self.d_model), # (motion, traj)
             nn.PReLU(),
             nn.Dropout(self.dropout),
             nn.Linear(self.d_model, self.d_model),
@@ -58,6 +58,7 @@ class Encoder(nn.Module):
         )
 
         # relative positional encoder
+        self.rel_pos = nn.Parameter(torch.arange(-self.config.fps//2, self.config.fps//2+1).unsqueeze(-1).float(), requires_grad=False)
         self.relative_pos_encoder = nn.Sequential(
             nn.Linear(1, self.d_model),
             nn.PReLU(),
@@ -74,11 +75,11 @@ class Encoder(nn.Module):
             self.atten_layers.append(LocalMultiHeadAttention(self.d_model, self.d_head, self.n_heads, 15, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
             self.pffn_layers.append(PoswiseFeedForwardNet(self.d_model, self.d_ff, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
 
-    def forward(self, x, mask, traj):
+    def forward(self, x, traj):
         B, T, D = x.shape
 
         # motion encoder
-        x = self.motion_encoder(torch.cat([x, mask, traj], dim=-1))
+        x = self.motion_encoder(torch.cat([x, traj], dim=-1))
         mu = self.mu_token.repeat(B, 1, 1)
         logvar = self.logvar_token.repeat(B, 1, 1)
         x = torch.cat([mu, logvar, x], dim=1)
@@ -86,8 +87,7 @@ class Encoder(nn.Module):
 
         # relative positional encoding
         pad_len = T-self.fps//2-1
-        rel_pos = torch.arange(-self.config.fps//2, self.config.fps//2+1, device=x.device).unsqueeze(-1).float()
-        lookup_table = self.relative_pos_encoder(rel_pos)
+        lookup_table = self.relative_pos_encoder(self.rel_pos)
         lookup_table = F.pad(lookup_table, (0, 0, pad_len, pad_len), value=0)
 
         # Transformer layers
@@ -132,6 +132,7 @@ class Decoder(nn.Module):
         )
 
         # relative positional encoder
+        self.rel_pos = nn.Parameter(torch.arange(-self.config.fps//2, self.config.fps//2+1).unsqueeze(-1).float(), requires_grad=False)
         self.relative_pos_encoder = nn.Sequential(
             nn.Linear(1, self.d_model),
             nn.PReLU(),
@@ -148,7 +149,6 @@ class Decoder(nn.Module):
         
         for _ in range(self.n_layers):
             self.atten_layers.append(LocalMultiHeadAttention(self.d_model, self.d_head, self.n_heads, 15, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
-            self.cross_layers.append(LocalMultiHeadAttention(self.d_model, self.d_head, self.n_heads, 15, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
             self.pffn_layers.append(PoswiseFeedForwardNet(self.d_model, self.d_ff, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
 
         # decoder
@@ -158,7 +158,7 @@ class Decoder(nn.Module):
             nn.Linear(self.d_model, self.d_motion if self.is_context else self.d_motion + 4),
         )
     
-    def forward(self, motion, traj, z, mask):
+    def forward(self, motion, traj, mask, z):
         B, T, D = motion.shape
 
         # original motion
@@ -171,16 +171,17 @@ class Decoder(nn.Module):
         # encoders
         x = self.motion_encoder(torch.cat([motion, mask, traj], dim=-1))
 
+        # add latent vector
+        x = x + z
+
         # relative positional encoding
         pad_len = T - (self.fps//2) - 1
-        rel_pos = torch.arange(-self.config.fps//2, self.config.fps//2+1, device=x.device).unsqueeze(-1).float()
-        lookup_table = self.relative_pos_encoder(rel_pos)
+        lookup_table = self.relative_pos_encoder(self.rel_pos)
         lookup_table = F.pad(lookup_table, (0, 0, pad_len, pad_len), value=0)
 
         # Transformer layers
         for i in range(self.n_layers):
             x = self.atten_layers[i](x, x, lookup_table=lookup_table)
-            x = self.cross_layers[i](x, z, lookup_table=lookup_table)
             x = self.pffn_layers[i](x)
 
         if self.pre_layernorm:
@@ -212,15 +213,15 @@ class VAE(nn.Module):
     def forward(self, motion, traj, mask):
         B, T, D = motion.shape
 
-        mu, logvar = self.encoder.forward(motion, mask, traj)
+        mu, logvar = self.encoder.forward(motion, traj)
         z = reparameterize(mu.unsqueeze(1).repeat(1, T, 1), logvar.unsqueeze(1).repeat(1, T, 1))
 
-        recon = self.decoder.forward(motion, traj, z, mask=mask)
+        recon = self.decoder.forward(motion, traj, mask, z)
         
         return recon, mu, logvar
     
     def sample(self, motion, traj, mask):
         B, T, D = motion.shape
         z = torch.randn(B, T, self.config.d_model, dtype=motion.dtype, device=motion.device)
-        pred_motion = self.decoder.forward(motion, traj, z, mask)
+        pred_motion = self.decoder.forward(motion, traj, mask, z)
         return pred_motion

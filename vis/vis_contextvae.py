@@ -18,7 +18,7 @@ from pymovis.vis import AppManager, MotionApp, Render, YBOT_FBX_DICT
 from utility import testutil
 from utility.config import Config
 from utility.dataset import MotionDataset
-from model.vae import VAE, VAEWithMask
+from model.vae import VAE
 
 class KeyframeApp(MotionApp):
     def __init__(self, GT_motion, pred_motion, model, time_per_motion):
@@ -59,10 +59,21 @@ class KeyframeApp(MotionApp):
         if key == glfw.KEY_W and action == glfw.PRESS:
             self.show_pred = not self.show_pred
 
+def get_mask(batch, context_frames):
+    B, T, D = batch.shape
+
+    # 0 for unknown frames, 1 for known frames
+    batch_mask = torch.ones_like(batch)
+    batch_mask[:, context_frames:-1, :] = 0
+
+    # TODO: Add probability of unmasking
+
+    return batch_mask
+
 if __name__ == "__main__":
     # initial settings
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = Config.load("configs/context_vae_withmask.json")
+    config = Config.load("configs/context_vae.json")
     util.seed()
 
     # dataset
@@ -79,7 +90,7 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = VAEWithMask(dataset.shape[-1], config, is_context=True).to(device)
+    model = VAE(dataset.shape[-1], config, is_context=True).to(device)
     testutil.load_model(model, config)
     model.eval()
 
@@ -99,11 +110,10 @@ if __name__ == "__main__":
             GT_local_R = rotation.R6_to_R(GT_local_R6.reshape(B, T, -1, 6))
 
             # trajectory
-            GT_root_xz    = GT_root_p[..., (0, 2)]
-            GT_root_fwd   = torch.matmul(rotation.R6_to_R(GT_local_R6[..., :6]), v_forward)
-            GT_root_fwd   = F.normalize(GT_root_fwd * torchconst.XZ(device), dim=-1)
-            GT_root_angle = torch.atan2(GT_root_fwd[..., 0], GT_root_fwd[..., 2]) # arctan2(x, z)
-            GT_traj       = torch.cat([GT_root_xz, GT_root_angle.unsqueeze(-1)], dim=-1)
+            GT_root_xz  = GT_root_p[..., (0, 2)]
+            GT_root_fwd = torch.matmul(rotation.R6_to_R(GT_local_R6[..., :6]), v_forward)
+            GT_root_fwd = F.normalize(GT_root_fwd * torchconst.XZ(device), dim=-1)
+            GT_traj     = torch.cat([GT_root_xz, GT_root_fwd], dim=-1)
 
             """ 1-1. Modify Trajectory """
             # traj_from = GT_traj[:, config.context_frames-1, -3:].unsqueeze(1)
@@ -120,7 +130,8 @@ if __name__ == "__main__":
             """ 2. Sample """
             # normalize - forward - denormalize
             GT_batch = (GT_motion - motion_mean) / motion_std
-            pred_motion, _ = model.sample(GT_batch, GT_traj)
+            mask = get_mask(GT_batch, config.context_frames)
+            pred_motion = model.sample(GT_batch, GT_traj, mask)
             pred_motion = pred_motion * motion_std + motion_mean
 
             # predicted motion data
