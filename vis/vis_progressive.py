@@ -18,7 +18,7 @@ from pymovis.vis import AppManager, MotionApp, Render, YBOT_FBX_DICT
 from utility import testutil
 from utility.config import Config
 from utility.dataset import MotionDataset
-from model.vae import VAE
+from model.progressive import ProgressiveTransformer
 
 class KeyframeApp(MotionApp):
     def __init__(self, GT_motion, pred_motion, model, time_per_motion):
@@ -73,7 +73,7 @@ def get_mask(batch, context_frames):
 if __name__ == "__main__":
     # initial settings
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = Config.load("configs/context_vae.json")
+    config = Config.load("configs/progressive.json")
     util.seed()
 
     # dataset
@@ -90,7 +90,7 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = VAE(dataset.shape[-1], config).to(device)
+    model = ProgressiveTransformer(dataset.shape[-1], config, is_context=True).to(device)
     testutil.load_model(model, config)
     model.eval()
 
@@ -116,30 +116,31 @@ if __name__ == "__main__":
             GT_traj     = torch.cat([GT_root_xz, GT_root_fwd], dim=-1)
 
             """ 1-1. Modify Trajectory """
-            traj_xz_from = GT_traj[:, config.context_frames-1, :2].unsqueeze(1)
-            traj_xz_to   = GT_traj[:, -1, :2].unsqueeze(1)
-            t = torch.linspace(0, 1, T - config.context_frames + 1)[:, None].to(device)
-            GT_traj[:, config.context_frames-1:, :2] = traj_xz_from + (traj_xz_to - traj_xz_from) * t
-            GT_traj[:, config.context_frames-1:, 2:] = GT_traj[:, config.context_frames-1, 2:].unsqueeze(1)
+            # traj_xz_from = GT_traj[:, config.context_frames-1, :2].unsqueeze(1)
+            # traj_xz_to   = GT_traj[:, -1, :2].unsqueeze(1)
+            # t = torch.linspace(0, 1, T - config.context_frames + 1)[:, None].to(device)
+            # GT_traj[:, config.context_frames-1:, :2] = traj_xz_from + (traj_xz_to - traj_xz_from) * t
+            # GT_traj[:, config.context_frames-1:, 2:] = GT_traj[:, config.context_frames-1, 2:].unsqueeze(1)
 
-            # traj_fwd_from = GT_traj[:, config.context_frames-1, 2:].unsqueeze(1)
-            # traj_fwd_to   = GT_traj[:, -1, 2:].unsqueeze(1)
-            # traj_angle_from = torch.atan2(traj_fwd_from[..., 0], traj_fwd_from[..., 2])
-            # traj_angle_to   = torch.atan2(traj_fwd_to[..., 0], traj_fwd_to[..., 2])
-            # traj_angle_diff = traj_angle_to - traj_angle_from
-            # traj_angle_diff = torch.where(traj_angle_diff >  torch.pi, traj_angle_diff - 2*torch.pi, traj_angle_diff)
-            # traj_angle_diff = torch.where(traj_angle_diff < -torch.pi, traj_angle_diff + 2*torch.pi, traj_angle_diff)
-            # traj_angle = traj_angle_from + traj_angle_diff * t
-            # traj_fwd = torch.stack([torch.sin(traj_angle), torch.zeros_like(traj_angle), torch.cos(traj_angle)], dim=-1)
-            # GT_traj[:, config.context_frames-1:, 2:] = traj_fwd
+            # # traj_fwd_from = GT_traj[:, config.context_frames-1, 2:].unsqueeze(1)
+            # # traj_fwd_to   = GT_traj[:, -1, 2:].unsqueeze(1)
+            # # traj_angle_from = torch.atan2(traj_fwd_from[..., 0], traj_fwd_from[..., 2])
+            # # traj_angle_to   = torch.atan2(traj_fwd_to[..., 0], traj_fwd_to[..., 2])
+            # # traj_angle_diff = traj_angle_to - traj_angle_from
+            # # traj_angle_diff = torch.where(traj_angle_diff >  torch.pi, traj_angle_diff - 2*torch.pi, traj_angle_diff)
+            # # traj_angle_diff = torch.where(traj_angle_diff < -torch.pi, traj_angle_diff + 2*torch.pi, traj_angle_diff)
+            # # traj_angle = traj_angle_from + traj_angle_diff * t
+            # # traj_fwd = torch.stack([torch.sin(traj_angle), torch.zeros_like(traj_angle), torch.cos(traj_angle)], dim=-1)
+            # # GT_traj[:, config.context_frames-1:, 2:] = traj_fwd
 
-            GT_root_p[:, -1, (0, 2)] = GT_traj[:, -1, (-3, -2)]
-            GT_local_R[:, -1, 0] = GT_local_R[:, config.context_frames-1, 0]
+            # GT_root_p[:, -1, (0, 2)] = GT_traj[:, -1, (-3, -2)]
+            # GT_local_R[:, -1, 0] = GT_local_R[:, config.context_frames-1, 0]
 
             """ 2. Sample """
             # normalize - forward - denormalize
             GT_batch = (GT_motion - motion_mean) / motion_std
-            pred_motion = model.sample(GT_batch, GT_traj)
+            mask = get_mask(GT_batch, config.context_frames)
+            pred_motion = model.forward(GT_batch, GT_traj)
             pred_motion = pred_motion * motion_std + motion_mean
 
             # predicted motion data

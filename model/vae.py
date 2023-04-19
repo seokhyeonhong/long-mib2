@@ -17,11 +17,44 @@ def get_keyframe_relative_position(window_length, context_frames):
 
     return p_kf
 
+def get_mask(batch, context_frames):
+    B, T, D = batch.shape
+
+    # 0 for unknown frames, 1 for known frames
+    batch_mask = torch.ones_like(batch)
+    batch_mask[:, context_frames:-1, :] = 0
+
+    # attention mask: False for unmasked frames, True for masked frames
+    attn_mask = torch.zeros(1, T, T, dtype=torch.bool, device=batch.device)
+    attn_mask[:, :, context_frames:-1] = True
+
+    return batch_mask, attn_mask
+
 def reparameterize(mu, logvar):
-    std = torch.exp(0.5*logvar)
+    std = torch.exp(0.5 * logvar)
     eps = torch.randn_like(std)
-    return mu + eps*std
+    return mu + eps * std
+
+class ConvNet(nn.Module):
+    def __init__(self, d_model, d_ff, dropout=0.1, pre_layernorm=False):
+        super(ConvNet, self).__init__()
+        self.pre_layernorm = pre_layernorm
+
+        self.layers = nn.Sequential(
+            nn.Conv1d(d_model, d_ff, kernel_size=7, padding=3),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Conv1d(d_ff, d_model, kernel_size=7, padding=3),
+            nn.Dropout(dropout)
+        )
+        self.layer_norm = nn.LayerNorm(d_model)
     
+    def forward(self, x):
+        if self.pre_layernorm:
+            return x + self.layers(self.layer_norm(x).transpose(1, 2)).transpose(1, 2)
+        else:
+            return self.layer_norm(x + self.layers(x.transpose(1, 2)).transpose(1, 2))
+
 class Encoder(nn.Module):
     def __init__(self, d_motion, config, is_context=True):
         super(Encoder, self).__init__()
@@ -49,51 +82,36 @@ class Encoder(nn.Module):
 
         # encoders
         self.motion_encoder = nn.Sequential(
-            nn.Linear(self.d_motion + 5, self.d_model), # (motion, traj)
+            nn.Conv1d(self.d_motion + 5, self.d_model, kernel_size=7, padding=3), # (motion, traj)
             nn.PReLU(),
-            nn.Dropout(self.dropout),
-            nn.Linear(self.d_model, self.d_model),
+            nn.Conv1d(self.d_model, self.d_model, kernel_size=7, padding=3),
             nn.PReLU(),
-            nn.Dropout(self.dropout),
-        )
-
-        # relative positional encoder
-        self.rel_pos = nn.Parameter(torch.arange(-self.config.fps//2, self.config.fps//2+1).unsqueeze(-1).float(), requires_grad=False)
-        self.relative_pos_encoder = nn.Sequential(
-            nn.Linear(1, self.d_model),
-            nn.PReLU(),
-            nn.Dropout(self.dropout),
-            nn.Linear(self.d_model, self.d_head),
-            nn.Dropout(self.dropout),
+            nn.Conv1d(self.d_model, self.d_model, kernel_size=7, padding=3),
         )
 
         # Transformer layers
         self.atten_layers = nn.ModuleList()
-        self.pffn_layers  = nn.ModuleList()
+        self.conv_layers  = nn.ModuleList()
         
         for _ in range(self.n_layers):
-            self.atten_layers.append(LocalMultiHeadAttention(self.d_model, self.d_head, self.n_heads, 15, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
-            self.pffn_layers.append(PoswiseFeedForwardNet(self.d_model, self.d_ff, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
+            self.atten_layers.append(MultiHeadAttention(self.d_model, self.d_head, self.n_heads, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
+            self.conv_layers.append(ConvNet(self.d_model, self.d_ff, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
 
     def forward(self, x, traj):
         B, T, D = x.shape
 
         # motion encoder
-        x = self.motion_encoder(torch.cat([x, traj], dim=-1))
+        x = torch.cat([x, traj], dim=-1)
+        x = self.motion_encoder(x.transpose(1, 2)).transpose(1, 2)
         mu = self.mu_token.repeat(B, 1, 1)
         logvar = self.logvar_token.repeat(B, 1, 1)
         x = torch.cat([mu, logvar, x], dim=1)
         T += 2
 
-        # relative positional encoding
-        pad_len = T-self.fps//2-1
-        lookup_table = self.relative_pos_encoder(self.rel_pos)
-        lookup_table = F.pad(lookup_table, (0, 0, pad_len, pad_len), value=0)
-
         # Transformer layers
         for i in range(self.n_layers):
-            x = self.atten_layers[i](x, x, lookup_table=lookup_table)
-            x = self.pffn_layers[i](x)
+            x = self.atten_layers[i](x, x)
+            x = self.conv_layers[i](x)
 
         # split mu and logvar
         mu, logvar = x[:, 0], x[:, 1]
@@ -101,11 +119,10 @@ class Encoder(nn.Module):
         return mu, logvar
     
 class Decoder(nn.Module):
-    def __init__(self, d_motion, config, is_context=True):
+    def __init__(self, d_motion, config):
         super(Decoder, self).__init__()
         self.d_motion       = d_motion
         self.config         = config
-        self.is_context     = is_context
     
         self.d_model        = config.d_model
         self.n_layers       = config.n_layers
@@ -123,66 +140,50 @@ class Decoder(nn.Module):
         
         # encoders
         self.motion_encoder = nn.Sequential(
-            nn.Linear(self.d_motion * 2 + 5, self.d_model), # (motion, mask) + traj(=5)
+            nn.Conv1d(self.d_motion * 2 + 5, self.d_model, kernel_size=7, padding=3), # (motion, mask) + traj(=5)
             nn.PReLU(),
-            nn.Dropout(self.dropout),
-            nn.Linear(self.d_model, self.d_model),
+            nn.Conv1d(self.d_model, self.d_model, kernel_size=7, padding=3),
             nn.PReLU(),
-            nn.Dropout(self.dropout),
-        )
-
-        # relative positional encoder
-        self.rel_pos = nn.Parameter(torch.arange(-self.config.fps//2, self.config.fps//2+1).unsqueeze(-1).float(), requires_grad=False)
-        self.relative_pos_encoder = nn.Sequential(
-            nn.Linear(1, self.d_model),
-            nn.PReLU(),
-            nn.Dropout(self.dropout),
-            nn.Linear(self.d_model, self.d_head),
-            nn.Dropout(self.dropout),
+            nn.Conv1d(self.d_model, self.d_model, kernel_size=7, padding=3),
         )
 
         # Transformer layers
         self.layer_norm = nn.LayerNorm(self.d_model)
         self.atten_layers = nn.ModuleList()
-        self.cross_layers = nn.ModuleList()
-        self.pffn_layers  = nn.ModuleList()
+        self.conv_layers  = nn.ModuleList()
         
         for _ in range(self.n_layers):
-            self.atten_layers.append(LocalMultiHeadAttention(self.d_model, self.d_head, self.n_heads, 15, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
-            self.pffn_layers.append(PoswiseFeedForwardNet(self.d_model, self.d_ff, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
+            self.atten_layers.append(MultiHeadAttention(self.d_model, self.d_head, self.n_heads, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
+            self.conv_layers.append(ConvNet(self.d_model, self.d_ff, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
 
         # decoder
         self.decoder = nn.Sequential(
             nn.Linear(self.d_model, self.d_model),
             nn.PReLU(),
-            nn.Linear(self.d_model, self.d_motion if self.is_context else self.d_motion + 4),
+            nn.Linear(self.d_model, self.d_motion),
         )
     
-    def forward(self, motion, traj, mask, z):
+    def forward(self, motion, traj, z):
         B, T, D = motion.shape
 
         # original motion
         original_motion = motion.clone()
 
         # mask out
-        if self.is_context:
-            motion = motion * mask
+        batch_mask, atten_mask = get_mask(motion, self.config.context_frames)
 
         # encoders
-        x = self.motion_encoder(torch.cat([motion, mask, traj], dim=-1))
+        x = torch.cat([motion * batch_mask, batch_mask, traj], dim=-1)
+        x = self.motion_encoder(x.transpose(1, 2)).transpose(1, 2)
 
         # add latent vector
         x = x + z
 
-        # relative positional encoding
-        pad_len = T - (self.fps//2) - 1
-        lookup_table = self.relative_pos_encoder(self.rel_pos)
-        lookup_table = F.pad(lookup_table, (0, 0, pad_len, pad_len), value=0)
-
         # Transformer layers
         for i in range(self.n_layers):
-            x = self.atten_layers[i](x, x, lookup_table=lookup_table)
-            x = self.pffn_layers[i](x)
+            x = self.atten_layers[i](x, x, mask=atten_mask)
+            x = self.conv_layers[i](x)
+            atten_mask = (1 - F.max_pool1d(1 - atten_mask.float(), kernel_size=15, stride=1, padding=7)).bool()
 
         if self.pre_layernorm:
             x = self.layer_norm(x)
@@ -191,37 +192,32 @@ class Decoder(nn.Module):
         x = self.decoder(x)
 
         # unmask original motion
-        x[..., :D] = x[..., :D] * (1 - mask) + original_motion * mask
-
-        # contact
-        if not self.is_context:
-            x[..., -4:] = torch.sigmoid(x[..., -4:])
+        x = x * (1 - batch_mask) + original_motion * batch_mask
 
         return x
 
 class VAE(nn.Module):
-    def __init__(self, d_motion, config, is_context):
+    def __init__(self, d_motion, config):
         super(VAE, self).__init__()
 
         self.d_motion   = d_motion
         self.config     = config
-        self.is_context = is_context
 
-        self.encoder = Encoder(d_motion, config, is_context=is_context)
-        self.decoder = Decoder(d_motion, config, is_context=is_context)
+        self.encoder = Encoder(d_motion, config)
+        self.decoder = Decoder(d_motion, config)
     
-    def forward(self, motion, traj, mask):
+    def forward(self, motion, traj):
         B, T, D = motion.shape
 
         mu, logvar = self.encoder.forward(motion, traj)
         z = reparameterize(mu.unsqueeze(1).repeat(1, T, 1), logvar.unsqueeze(1).repeat(1, T, 1))
 
-        recon = self.decoder.forward(motion, traj, mask, z)
+        recon = self.decoder.forward(motion, traj, z)
         
         return recon, mu, logvar
     
-    def sample(self, motion, traj, mask):
+    def sample(self, motion, traj):
         B, T, D = motion.shape
         z = torch.randn(B, T, self.config.d_model, dtype=motion.dtype, device=motion.device)
-        pred_motion = self.decoder.forward(motion, traj, mask, z)
+        pred_motion = self.decoder.forward(motion, traj, z)
         return pred_motion

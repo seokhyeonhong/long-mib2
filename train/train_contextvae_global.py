@@ -34,10 +34,22 @@ def get_motion_and_trajectory(motion, skeleton):
 
     return local_R6.reshape(B, T, -1), global_p.reshape(B, T, -1), traj
 
+
+def get_mask(batch, context_frames):
+    B, T, D = batch.shape
+
+    # 0 for unknown frames, 1 for known frames
+    batch_mask = torch.ones_like(batch)
+    batch_mask[:, context_frames:-1, :] = 0
+
+    # TODO: Add probability of unmasking
+
+    return batch_mask
+
 if __name__ == "__main__":
     # initial settings with all possible gpus
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = Config.load("configs/context_vae.json")
+    config = Config.load("configs/context_vae_global.json")
     util.seed()
 
     # dataset
@@ -57,7 +69,7 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = VAE(dataset.shape[-1], config).to(device)
+    model = VAE(dataset.shape[-1], config, is_context=True).to(device)
     optim = torch.optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.98), eps=1e-9)
     init_epoch, iter = trainutil.load_latest_ckpt(model, optim, config)
     init_iter = iter
@@ -90,7 +102,8 @@ if __name__ == "__main__":
             """ 2. Forward ContextVAE """
             # normalize - forward - denormalize
             GT_batch = (GT_motion - motion_mean) / motion_std
-            pred_motion, pred_mu, pred_logvar = model.forward(GT_batch, GT_traj)
+            mask     = get_mask(GT_batch, config.context_frames)
+            pred_motion, pred_mu, pred_logvar = model.forward(GT_batch, GT_traj, mask)
             pred_motion = pred_motion * motion_std + motion_mean
 
             # predicted motion data
@@ -148,7 +161,8 @@ if __name__ == "__main__":
                         """ 2. Forward ContextVAE """
                         # normalize - forward - denormalize
                         GT_batch = (GT_motion - motion_mean) / motion_std
-                        pred_motion = model.sample(GT_batch, GT_traj)
+                        mask     = get_mask(GT_batch, config.context_frames)
+                        pred_motion = model.sample(GT_batch, GT_traj, mask)
                         pred_motion = pred_motion * motion_std + motion_mean
 
                         # predicted motion data

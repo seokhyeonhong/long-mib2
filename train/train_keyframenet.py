@@ -16,7 +16,7 @@ from pymovis.ops import motionops, rotation, mathops
 
 from utility.dataset import MotionDataset
 from utility.config import Config
-from model.vae import VAE
+from model.keyframenet import KeyframeNet
 from utility import trainutil
 
 def get_motion_and_trajectory(motion, skeleton):
@@ -34,10 +34,19 @@ def get_motion_and_trajectory(motion, skeleton):
 
     return local_R6.reshape(B, T, -1), global_p.reshape(B, T, -1), traj
 
+def get_mask(batch, context_frames):
+    B, T, D = batch.shape
+
+    # 0 for unknown frames, 1 for known frames
+    batch_mask = torch.ones_like(batch)
+    batch_mask[:, context_frames:-1, :] = 0
+
+    return batch_mask
+
 if __name__ == "__main__":
     # initial settings with all possible gpus
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = Config.load("configs/context_vae.json")
+    config = Config.load("configs/keyframenet.json")
     util.seed()
 
     # dataset
@@ -57,7 +66,7 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = VAE(dataset.shape[-1], config).to(device)
+    model = KeyframeNet(dataset.shape[-1], config).to(device)
     optim = torch.optim.Adam(model.parameters(), lr=1e-4, betas=(0.9, 0.98), eps=1e-9)
     init_epoch, iter = trainutil.load_latest_ckpt(model, optim, config)
     init_iter = iter
@@ -74,7 +83,6 @@ if __name__ == "__main__":
         "pose":    0,
         "smooth":  0,
         "traj":    0,
-        "kl":      0,
     }
     start_time = time.perf_counter()
     for epoch in range(init_epoch, config.epochs+1):
@@ -90,7 +98,8 @@ if __name__ == "__main__":
             """ 2. Forward ContextVAE """
             # normalize - forward - denormalize
             GT_batch = (GT_motion - motion_mean) / motion_std
-            pred_motion, pred_mu, pred_logvar = model.forward(GT_batch, GT_traj)
+            mask = get_mask(GT_batch, config.context_frames)
+            pred_motion = model.forward(GT_batch, GT_traj, mask)
             pred_motion = pred_motion * motion_std + motion_mean
 
             # predicted motion data
@@ -100,8 +109,7 @@ if __name__ == "__main__":
             loss_pose = config.weight_pose * (trainutil.loss_recon(pred_global_p, GT_global_p) + trainutil.loss_recon(pred_local_R6, GT_local_R6))
             loss_smooth = config.weight_smooth * (trainutil.loss_smooth(pred_global_p) + trainutil.loss_smooth(pred_local_R6))
             loss_traj = config.weight_traj * (trainutil.loss_traj(pred_traj, GT_traj))
-            loss_kl   = config.weight_kl * trainutil.loss_kl(pred_mu, pred_logvar)
-            loss = loss_pose + loss_smooth + loss_traj + loss_kl
+            loss = loss_pose + loss_smooth + loss_traj
 
             """ 4. Backward """
             optim.zero_grad()
@@ -113,15 +121,13 @@ if __name__ == "__main__":
             loss_dict["pose"]   += loss_pose.item()
             loss_dict["smooth"] += loss_smooth.item()
             loss_dict["traj"]   += loss_traj.item()
-            loss_dict["kl"]     += loss_kl.item()
 
             if iter % config.log_interval == 0:
-                tqdm.write(f"Iter {iter} | Loss: {loss_dict['total'] / config.log_interval:.4f} | Pose: {loss_dict['pose'] / config.log_interval:.4f} | Smooth: {loss_dict['smooth'] / config.log_interval:.4f} | Traj: {loss_dict['traj'] / config.log_interval:.4f} | KL: {loss_dict['kl'] / config.log_interval:.4f} | Time: {(time.perf_counter() - start_time) / 60:.2f} min")
+                tqdm.write(f"Iter {iter} | Loss: {loss_dict['total'] / config.log_interval:.4f} | Pose: {loss_dict['pose'] / config.log_interval:.4f} | Smooth: {loss_dict['smooth'] / config.log_interval:.4f} | Traj: {loss_dict['traj'] / config.log_interval:.4f} | Time: {(time.perf_counter() - start_time) / 60:.2f} min")
                 writer.add_scalar("loss/total", loss_dict["total"]  / config.log_interval, iter)
                 writer.add_scalar("loss/pose",  loss_dict["pose"]   / config.log_interval, iter)
                 writer.add_scalar("loss/smooth",loss_dict["smooth"] / config.log_interval, iter)
                 writer.add_scalar("loss/traj",  loss_dict["traj"]   / config.log_interval, iter)
-                writer.add_scalar("loss/kl",    loss_dict["kl"]     / config.log_interval, iter)
                 
                 for k in loss_dict.keys():
                     loss_dict[k] = 0
@@ -148,7 +154,8 @@ if __name__ == "__main__":
                         """ 2. Forward ContextVAE """
                         # normalize - forward - denormalize
                         GT_batch = (GT_motion - motion_mean) / motion_std
-                        pred_motion = model.sample(GT_batch, GT_traj)
+                        mask = get_mask(GT_batch, config.context_frames)
+                        pred_motion = model.forward(GT_batch, GT_traj, mask)
                         pred_motion = pred_motion * motion_std + motion_mean
 
                         # predicted motion data
@@ -158,7 +165,7 @@ if __name__ == "__main__":
                         loss_pose = config.weight_pose * (trainutil.loss_recon(pred_global_p, GT_global_p) + trainutil.loss_recon(pred_local_R6, GT_local_R6))
                         loss_smooth = config.weight_smooth * (trainutil.loss_smooth(pred_global_p) + trainutil.loss_smooth(pred_local_R6))
                         loss_traj = config.weight_traj * (trainutil.loss_traj(pred_traj, GT_traj))
-                        loss = loss_pose + loss_smooth + loss_traj + loss_kl
+                        loss = loss_pose + loss_smooth + loss_traj
 
                         # log
                         val_loss_dict["total"]   += loss.item()
