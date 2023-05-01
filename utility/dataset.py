@@ -79,7 +79,7 @@ class KeyframeDataset(Dataset):
 
         return mean, std
 
-class KeyframePairDataset(Dataset):
+class GlobalKeyframeDataset(Dataset):
     """
     Motion dataset for training and testing
     Features:
@@ -94,25 +94,23 @@ class KeyframePairDataset(Dataset):
         with open(os.path.join(self.config.dataset_dir, "skeleton.pkl"), "rb") as f:
             self.skeleton = pickle.load(f)
 
-        self.features = torch.from_numpy(np.load(config.keyframe_trainset_npy if train else config.keyframe_testset_npy))
+        self.features = torch.from_numpy(np.load(f"dataset/{'train.npy' if train else 'test.npy'}"))
         self.shape = self.features.shape
         
     def __len__(self):
         return len(self.features)
     
     def __getitem__(self, idx):
-        item1 = self.features[idx]
-        item2 = self.features[random.randint(0, len(self.features)-1)]
-        return item1, item2
+        return self.features[idx]
 
     def statistics(self, dim=(0, 1)):
-        print(f"Calculating KeyframePairDataset mean and std, dim={dim}...")
+        print(f"Calculating GlobalKeyframeDataset mean and std, dim={dim}...")
 
         # calculate statistics from training set
-        trainset = KeyframePairDataset(True, self.config)
+        trainset = GlobalKeyframeDataset(True, self.config)
 
         # mean and std
-        X = torch.stack([trainset[i][0] for i in range(len(trainset))], dim=0)
+        X = torch.stack([trainset[i] for i in range(len(trainset))], dim=0)
         mean = torch.mean(X, dim=dim)
         std = torch.std(X, dim=dim) + 1e-8
 

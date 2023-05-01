@@ -8,6 +8,7 @@ from pymovis.ops import rotation, mathops
 from pymovis.utils import util
 
 from utility.config import Config
+from utility import utils
 
 """ Load BVH files and convert to Motion objects """
 def load_motions(config):
@@ -67,12 +68,20 @@ def get_features_parallel(windows):
     return features
 
 def get_features(window):
+    # features
     local_R = np.stack([pose.local_R for pose in window.poses], axis=0)
     root_p  = np.stack([pose.root_p for pose in window.poses], axis=0)
+    base    = np.stack([pose.base for pose in window.poses], axis=0)
+    forward = np.stack([pose.forward for pose in window.poses], axis=0)
 
+    base_xz    = base[:, [0, 2]]
+    forward_xz = forward[:, [0, 2]]
+
+    # R to R6
     local_R6 = rotation.R_to_R6(local_R).reshape(len(window), -1)
-    root_p   = root_p.reshape(len(window), -1)
-    feature = np.concatenate([local_R6, root_p], axis=-1).astype(np.float32)
+
+    # concatenate
+    feature = np.concatenate([local_R6, root_p, base_xz, forward_xz], axis=-1).astype(np.float32)
 
     return feature
 
@@ -86,7 +95,7 @@ def save_features(features, npy_path):
     np.save(npy_path, features)
 
 def main():
-    config = Config.load("configs/context_vae.json")
+    config = Config.load("configs/dataset.json")
     train_motions, test_motions = load_motions(config)
 
     # feature extraction

@@ -1,7 +1,7 @@
 {
     "dataset_dir": "dataset",
 
-    "window_length": 200,
+    "window_length": 41,
     "window_offset": 20,
     "fps": 30,
     "context_frames": 10,
@@ -12,21 +12,22 @@
     "contact_joint_names": ["LeftFoot", "LeftToeBase", "RightFoot", "RightToeBase"],
     "contact_vel_threshold": 2e-4,
 
-    "log_dir": "log/ContextGAN",
+    "log_dir": "log/MotionPredictionVAE",
     "log_interval": 100,
 
-    "save_dir": "save/ContextGAN",
+    "save_dir": "save/MotionPredictionVAE",
     "save_interval": 10000,
 
     "val_interval": 1000,
 
     "batch_size": 64,
-    "epochs": 1000,
+    "epochs": 2000,
+    "lr": 2e-5,
     "warmup_iters": 8000,
     "min_transition": 5,
     "max_transition": 90,
 
-    "dropout": 0.0,
+    "dropout": 0.1,
     "n_layers": 6,
     "n_heads": 8,
     "d_model": 512,
@@ -34,7 +35,6 @@
     "pre_layernorm": true,
 
     "weight_pose": 1.0,
-    "weight_adv": 1.0,
     "weight_traj": 0.5,
-    "weight_smooth": 0.1
+    "weight_kl": 1e-4
 }

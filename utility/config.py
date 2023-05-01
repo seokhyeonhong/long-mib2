@@ -36,15 +36,12 @@ class Config(dict):
         config.testset_npy  = f"{config.test_dir}/motion_length{config.window_length}_offset{config.window_offset}_fps{config.fps}.npy"
 
         # keyframe dataset
-        config.keyframe_train_dir    = os.path.join(config.train_dir, f"keyframe_length{config.window_length}_offset{config.window_offset}_fps{config.fps}_maxtrans{config.max_transition}")
-        config.keyframe_test_dir     = os.path.join(config.test_dir,  f"keyframe_length{config.window_length}_offset{config.window_offset}_fps{config.fps}_maxtrans{config.max_transition}")
-        config.keyframe_trainset_npy = f"{config.train_dir}/keyframe_length{config.window_length}_offset{config.window_offset}_fps{config.fps}_maxtrans{config.max_transition}.npy"
-        config.keyframe_testset_npy  = f"{config.test_dir}/keyframe_length{config.window_length}_offset{config.window_offset}_fps{config.fps}_maxtrans{config.max_transition}.npy"
+        config.keyframe_train_dir    = os.path.join(config.train_dir, f"keyframe_length{config.window_length}_offset{config.window_offset}_fps{config.fps}")
+        config.keyframe_test_dir     = os.path.join(config.test_dir,  f"keyframe_length{config.window_length}_offset{config.window_offset}_fps{config.fps}")
+        config.keyframe_trainset_npy = f"{config.train_dir}/keyframe_length{config.window_length}_offset{config.window_offset}_fps{config.fps}.npy"
+        config.keyframe_testset_npy  = f"{config.test_dir}/keyframe_length{config.window_length}_offset{config.window_offset}_fps{config.fps}.npy"
 
         # directories to save and log training
-        postfix = f"transition{config.min_transition}-{config.max_transition}"
-        config.log_dir  = os.path.join(config.log_dir, postfix)
-        config.save_dir = os.path.join(config.save_dir, postfix)
 
         return config
 
