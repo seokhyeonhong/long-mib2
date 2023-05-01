@@ -12,9 +12,10 @@ class MotionRefineNet(nn.Module):
     """
     Score prediction network given motion.
     """
-    def __init__(self, d_motion, config):
+    def __init__(self, d_motion, d_traj, config):
         super(MotionRefineNet, self).__init__()
         self.d_motion = d_motion
+        self.d_traj   = d_traj
         self.config = config
 
         self.d_model        = config.d_model
@@ -38,7 +39,7 @@ class MotionRefineNet(nn.Module):
             nn.Dropout(self.dropout),
         )
         self.traj_encoder = nn.Sequential(
-            nn.Linear(5, self.d_model), # (traj(=5))
+            nn.Linear(self.d_traj, self.d_model),
             nn.PReLU(),
             nn.Dropout(self.dropout),
             nn.Linear(self.d_model, self.d_model),

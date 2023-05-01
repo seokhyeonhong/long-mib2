@@ -202,10 +202,10 @@ def get_align_Rp(motion, align_at, v_forward):
     local_R6, root_p = torch.split(motion, [D-3, 3], dim=-1)
 
     # difference of root position
-    root_p_diff = root_p[:, align_at-1:align_at] * torchconst.XZ(motion.device)
+    root_p_diff = root_p[:, align_at:align_at+1] * torchconst.XZ(motion.device)
 
     # difference of root orientation
-    root_R   = rotation.R6_to_R(local_R6[:, align_at-1:align_at, :6])
+    root_R   = rotation.R6_to_R(local_R6[:, align_at:align_at+1, :6])
     root_fwd = torch.matmul(root_R, v_forward)
     root_fwd = F.normalize(root_fwd * torchconst.XZ(motion.device), dim=-1)
 

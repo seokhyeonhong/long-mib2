@@ -58,8 +58,8 @@ if __name__ == "__main__":
             """ 1. GT motion data """
             B, T, D = GT_motion.shape
             GT_motion = GT_motion.to(device)
-            GT_local_R6, GT_root_p = torch.split(GT_motion, [D-3, 3], dim=-1)
-            GT_traj = utils.get_trajectory(GT_motion, v_forward)
+            GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
+            GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
 
             # batch = (GT_motion - motion_mean) / motion_std
 
@@ -76,7 +76,6 @@ if __name__ == "__main__":
                     R_diff, root_p_diff = utils.get_align_Rp(batch, ctx_frame, v_forward)
                     batch = utils.align_motion(batch, R_diff, root_p_diff)
                     traj = utils.get_trajectory(batch, v_forward)
-                    breakpoint()
 
                     """ 3. Interpolation """
                     interp_motion = utils.interp_motion(GT_motion[b:b+1], start_frame, end_frame, config.window_length)

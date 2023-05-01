@@ -57,7 +57,7 @@ class SingleMotionApp(MotionApp):
         elif key == glfw.KEY_X and action == glfw.PRESS:
             self.show_many = not self.show_many
 
-class ContextMotionApp(MotionApp):
+class TwoMotionApp(MotionApp):
     def __init__(self, GT_motion, pred_motion, ybot_model, frames_per_motion):
         super().__init__(GT_motion, ybot_model, YBOT_FBX_DICT)
         self.frames_per_motion = frames_per_motion

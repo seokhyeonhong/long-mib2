@@ -32,8 +32,11 @@ if __name__ == "__main__":
     skeleton    = dataset.skeleton
     v_forward   = torch.from_numpy(config.v_forward).to(device)
 
-    motion_mean, motion_std = dataset.statistics()
+    motion_mean, motion_std = dataset.motion_statistics()
     motion_mean, motion_std = motion_mean.to(device), motion_std.to(device)
+
+    traj_mean, traj_std = dataset.traj_statistics()
+    traj_mean, traj_std = traj_mean.to(device), traj_std.to(device)
     
     feet_ids = []
     for name in config.contact_joint_names:
@@ -44,7 +47,7 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = MotionRefineNet(dataset.shape[-1], config).to(device)
+    model = MotionRefineNet(dataset.shape[-1] - 4, 4, config).to(device)
     optim = torch.optim.Adam(model.parameters(), lr=config.lr, betas=(0.9, 0.98), eps=1e-9)
     # scheduler = utils.get_noam_scheduler(config, optim)
     init_epoch, iter = utils.load_latest_ckpt(model, optim, config)#, scheduler=scheduler)
@@ -76,7 +79,8 @@ if __name__ == "__main__":
 
             """ 2. GT motion data """
             B, T, D = GT_motion.shape
-            GT_local_R6, GT_global_p, GT_traj = utils.get_motion_and_trajectory(GT_motion, skeleton, v_forward)
+            GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
+            GT_local_R6, GT_global_p = utils.get_motion(GT_motion, skeleton)
             GT_feet_v, GT_contact = utils.get_velocity_and_contact(GT_global_p, feet_ids, config.contact_vel_threshold)
 
             """ 3. Interpolated motion data & mask """
@@ -87,8 +91,9 @@ if __name__ == "__main__":
 
             """ 4. Train MotionRefineNet """
             # forward
-            batch = (interp_motion - motion_mean) / motion_std
-            pred_motion, pred_contact = model.forward(batch, mask, GT_traj)
+            motion = (interp_motion - motion_mean) / motion_std
+            traj   = (GT_traj - traj_mean) / traj_std
+            pred_motion, pred_contact = model.forward(motion, mask, traj)
 
             # predicted motion
             pred_motion = pred_motion * motion_std + motion_mean
@@ -96,10 +101,10 @@ if __name__ == "__main__":
             pred_feet_v, _ = utils.get_velocity_and_contact(pred_global_p, feet_ids, config.contact_vel_threshold)
 
             # loss
-            loss_pose    = config.weight_pose * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
-            loss_traj    = config.weight_traj * (utils.traj_loss(pred_traj, GT_traj))
+            loss_pose    = config.weight_pose    * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
+            loss_traj    = config.weight_traj    * (utils.traj_loss(pred_traj, GT_traj))
             loss_contact = config.weight_contact * (utils.recon_loss(pred_contact, GT_contact))
-            loss_foot    = config.weight_foot * (utils.foot_loss(pred_feet_v, pred_contact.detach()))
+            loss_foot    = config.weight_foot    * (utils.foot_loss(pred_feet_v, pred_contact.detach()))
             loss         = loss_pose + loss_traj + loss_contact + loss_foot
 
             # backward
@@ -138,7 +143,8 @@ if __name__ == "__main__":
 
                         """ 2. GT motion data """
                         B, T, D = GT_motion.shape
-                        GT_local_R6, GT_global_p, GT_traj = utils.get_motion_and_trajectory(GT_motion, skeleton, v_forward)
+                        GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
+                        GT_local_R6, GT_global_p = utils.get_motion(GT_motion, skeleton)
                         GT_feet_v, GT_contact = utils.get_velocity_and_contact(GT_global_p, feet_ids, config.contact_vel_threshold)
 
                         """ 3. Interpolated motion data & mask """
@@ -149,8 +155,9 @@ if __name__ == "__main__":
 
                         """ 4. Train MotionRefineNet """
                         # forward
-                        batch = (interp_motion - motion_mean) / motion_std
-                        pred_motion, pred_contact = model.forward(batch, mask, GT_traj)
+                        motion = (interp_motion - motion_mean) / motion_std
+                        traj   = (GT_traj - traj_mean) / traj_std
+                        pred_motion, pred_contact = model.forward(motion, mask, traj)
 
                         # predicted motion
                         pred_motion = pred_motion * motion_std + motion_mean
@@ -158,10 +165,10 @@ if __name__ == "__main__":
                         pred_feet_v, _ = utils.get_velocity_and_contact(pred_global_p, feet_ids, config.contact_vel_threshold)
 
                         # loss
-                        loss_pose    = config.weight_pose * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
-                        loss_traj    = config.weight_traj * (utils.traj_loss(pred_traj, GT_traj))
+                        loss_pose    = config.weight_pose    * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
+                        loss_traj    = config.weight_traj    * (utils.traj_loss(pred_traj, GT_traj))
                         loss_contact = config.weight_contact * (utils.recon_loss(pred_contact, GT_contact))
-                        loss_foot    = config.weight_foot * (utils.foot_loss(pred_feet_v, pred_contact.detach()))
+                        loss_foot    = config.weight_foot    * (utils.foot_loss(pred_feet_v, pred_contact.detach()))
                         loss         = loss_pose + loss_traj + loss_contact + loss_foot
 
                         # log

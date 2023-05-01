@@ -15,7 +15,7 @@ from pymovis.ops import rotation
 from utility.config import Config
 from utility.dataset import MotionDataset
 from utility.utils import get_interpolated_motion
-from vis.visapp import SingleMotionApp
+from vis.visapp import TwoMotionApp
 
 class DatasetApp(MotionApp):
     def __init__(self, motion, model, traj):
@@ -72,15 +72,20 @@ if __name__ == "__main__":
         """ 1. GT motion data """
         B, T, D = GT_motion.shape
         GT_motion = GT_motion.to(device)
+        GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
         interpolated_motion = get_interpolated_motion(GT_motion, config.context_frames)
 
-        local_R6, root_p = torch.split(interpolated_motion, [D-3, 3], dim=-1)
-        local_R = rotation.R6_to_R(local_R6.reshape(B, T, -1, 6))
+        GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
+        GT_local_R = rotation.R6_to_R(GT_local_R6.reshape(B, T, -1, 6))
+
+        interp_local_R6, interp_root_p = torch.split(interpolated_motion, [D-7, 3], dim=-1)
+        interp_local_R = rotation.R6_to_R(interp_local_R6.reshape(B, T, -1, 6))
 
         """ 2. Animation """
-        motion = Motion.from_torch(skeleton, local_R.reshape(B*T, -1, 3, 3), root_p.reshape(B*T, 3))
+        GT_motion = Motion.from_torch(skeleton, GT_local_R.reshape(B*T, -1, 3, 3), GT_root_p.reshape(B*T, 3))
+        interp_motion = Motion.from_torch(skeleton, interp_local_R.reshape(B*T, -1, 3, 3), interp_root_p.reshape(B*T, 3))
 
         """ 3. Visualization """
         app_manager = AppManager()
-        app = SingleMotionApp(motion, character.model(), T)
+        app = TwoMotionApp(GT_motion, interp_motion, character.model(), T)
         app_manager.run(app)
