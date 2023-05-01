@@ -95,15 +95,12 @@ def get_motion_and_trajectory(motion, skeleton, v_forward):
     B, T, D = motion.shape
 
     # motion
-    local_R6, root_p = torch.split(motion, [D-3, 3], dim=-1)
-    _, global_p = motionops.R6_fk(local_R6.reshape(B, T, -1, 6), root_p, skeleton)
+    local_R6, global_p = get_motion(motion, skeleton)
 
     # trajectory on xz plane
-    root_fwd = torch.matmul(rotation.R6_to_R(local_R6[..., :6]), v_forward)
-    root_fwd = F.normalize(root_fwd * torchconst.XZ(motion.device), dim=-1)
-    traj = torch.cat([root_p[..., (0, 2)], root_fwd[..., (0, 2)]], dim=-1)
+    trajectory = get_trajectory(motion, v_forward)
 
-    return local_R6.reshape(B, T, -1, 6), global_p.reshape(B, T, -1, 3), traj
+    return local_R6, global_p, trajectory
 
 def get_motion(motion, skeleton):
     B, T, D = motion.shape
@@ -121,10 +118,9 @@ def get_trajectory(motion, v_forward):
     local_R6, root_p = torch.split(motion, [D-3, 3], dim=-1)
 
     # trajectory
-    root_xz = root_p[..., (0, 2)]
     root_fwd = torch.matmul(rotation.R6_to_R(local_R6[..., :6]), v_forward)
     root_fwd = F.normalize(root_fwd * torchconst.XZ(motion.device), dim=-1)
-    traj = torch.cat([root_xz, root_fwd], dim=-1)
+    traj = torch.cat([root_p[..., (0, 2)], root_fwd[..., (0, 2)]], dim=-1)
 
     return traj
 
@@ -136,7 +132,9 @@ def get_velocity_and_contact(global_p, joint_ids, threshold):
     return feet_v, contact
 
 def get_interpolated_trajectory(traj, context_frames):
-    # B, T, 5 = traj.shape
+    # B, T, _ = traj.shape
+    zeros = torch.zeros_like(traj[:, :, 0:1])
+    traj = torch.cat([traj[:, :, (0, 1)], zeros, traj[:, :, (2, 3)]], dim=-1)
     res = traj.clone()
 
     traj_from = traj[:, context_frames-1].unsqueeze(1)
@@ -157,7 +155,7 @@ def get_interpolated_trajectory(traj, context_frames):
     fwd = torch.matmul(R, fwd_from.unsqueeze(-1)).squeeze(-1)
     res[:, context_frames-1:, 2:] = fwd
     
-    return res
+    return res[..., (0, 1, 3, 4)]
 
 def get_interpolated_motion(motion, context_frames):
     B, T, D = motion.shape
@@ -211,7 +209,6 @@ def get_align_Rp(motion, align_at, v_forward):
 
     angle = mathops.signed_angle(root_fwd, v_forward[None, None, :], dim=-1)
     axis  = torchconst.Y(motion.device)[None, None, :].repeat(B, 1, 1)
-    breakpoint()
     R_diff = rotation.A_to_R(angle, axis)
 
     return R_diff, root_p_diff
@@ -222,12 +219,29 @@ def align_motion(motion, R_diff, root_p_diff):
     local_R6, root_p = torch.split(motion, [D-3, 3], dim=-1)
 
     # align root position
-    root_p = root_p - root_p_diff
+    root_p = torch.matmul(R_diff, (root_p - root_p_diff).unsqueeze(-1)).squeeze(-1)
 
     # align root orientation
-    root_R = rotation.R6_to_R(local_R6[..., :6])
-    root_R = torch.matmul(R_diff, root_R)
-    root_R6 = rotation.R_to_R6(root_R)
+    root_R   = rotation.R6_to_R(local_R6[..., :6])
+    root_R   = torch.matmul(R_diff, root_R)
+    root_R6  = rotation.R_to_R6(root_R)
+
+    local_R6 = torch.cat([root_R6, local_R6[..., 6:]], dim=-1)
+
+    return torch.cat([local_R6, root_p], dim=-1)
+
+def restore_motion(motion, R_diff, root_p_diff):
+    B, T, D = motion.shape
+
+    local_R6, root_p = torch.split(motion, [D-3, 3], dim=-1)
+
+    # restore root position
+    root_p = torch.matmul(R_diff.transpose(-1, -2), root_p.unsqueeze(-1)).squeeze(-1) + root_p_diff
+
+    # restore root orientation
+    root_R   = rotation.R6_to_R(local_R6[..., :6])
+    root_R   = torch.matmul(R_diff.transpose(-1, -2), root_R)
+    root_R6  = rotation.R_to_R6(root_R)
 
     local_R6 = torch.cat([root_R6, local_R6[..., 6:]], dim=-1)
     return torch.cat([local_R6, root_p], dim=-1)

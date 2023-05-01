@@ -27,7 +27,7 @@
     "min_transition": 5,
     "max_transition": 30,
 
-    "dropout": 0.1,
+    "dropout": 0.0,
     "n_layers": 6,
     "n_heads": 8,
     "d_model": 512,
@@ -36,6 +36,7 @@
 
     "weight_pose": 1.0,
     "weight_traj": 0.5,
+    "weight_vel": 0.2,
     "weight_contact": 0.1,
     "weight_foot": 0.1
 }

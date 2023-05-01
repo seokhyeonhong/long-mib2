@@ -24,8 +24,6 @@
     "epochs": 2000,
     "lr": 1e-4,
     "warmup_iters": 8000,
-    "min_transition": 5,
-    "max_transition": 90,
 
     "dropout": 0.0,
     "n_layers": 6,
@@ -36,5 +34,6 @@
 
     "weight_pose": 1.0,
     "weight_traj": 0.5,
+    "weight_smooth": 0.1,
     "weight_kl": 1e-3
 }

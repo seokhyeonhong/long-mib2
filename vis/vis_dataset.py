@@ -21,10 +21,7 @@ from vis.visapp import SingleMotionApp
 class DatasetApp(MotionApp):
     def __init__(self, motion, model, traj):
         super().__init__(motion, model, YBOT_FBX_DICT)
-        # self.prob = prob
         self.copy_model = copy.deepcopy(model)
-        # self.prob_sorted_idx = torch.argsort(prob.squeeze(), descending=True)[11:]
-        self.prob_idx = 0
         self.traj = traj
 
         # vis
@@ -33,30 +30,22 @@ class DatasetApp(MotionApp):
     
     def render(self):
         super().render()
+
+        # render trajectory
         xz, forward = self.traj[self.frame, :2], self.traj[self.frame, 2:]
-        R = glm.angleAxis(glm.radians(90), glm.cross(glm.vec3(0, 1, 0), glm.vec3(forward[0], forward[1], forward[2])))
+        R = glm.angleAxis(glm.radians(90), glm.cross(glm.vec3(0, 1, 0), glm.vec3(forward[0], 0, forward[1])))
         p = glm.vec3(xz[0], 0, xz[1])
         self.arrow.set_position(p).set_orientation(R).draw()
 
         for i in range(self.prob_idx):
             self.copy_model.set_pose_by_source(self.motion.poses[self.prob_sorted_idx[i]])
             Render.model(self.copy_model).set_all_alphas(0.5).draw()
-        
-        # for frame in range(self.total_frames):
-        #     position = self.motion.poses[frame].root_p
-        #     self.sphere.set_position(position[0], 0, position[2]).draw()
     
     def render_text(self):
         super().render_text()
-        Render.text_on_screen(f"PROB_IDX: {self.prob_idx}").draw()
     
     def key_callback(self, window, key, scancode, action, mods):
         super().key_callback(window, key, scancode, action, mods)
-
-        if key == glfw.KEY_D and action == glfw.PRESS:
-            self.prob_idx += 1
-        elif key == glfw.KEY_S and action == glfw.PRESS:
-            self.prob_idx -= 1
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -84,5 +73,5 @@ if __name__ == "__main__":
 
         """ 3. Visualization """
         app_manager = AppManager()
-        app = SingleMotionApp(motion, character.model(), T)
+        app = DatasetApp(motion, character.model(), GT_traj.reshape(B*T, 4))
         app_manager.run(app)

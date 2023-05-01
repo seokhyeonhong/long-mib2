@@ -56,10 +56,11 @@ if __name__ == "__main__":
 
     # loss dict
     loss_dict = {
-        "total": 0,
-        "pose":  0,
-        "traj":  0,
-        "kl":    0,
+        "total":  0,
+        "pose":   0,
+        "traj":   0,
+        "smooth": 0,
+        "kl":     0,
     }
 
     # training
@@ -83,10 +84,11 @@ if __name__ == "__main__":
             pred_local_R6, pred_global_p, pred_traj  = utils.get_motion_and_trajectory(pred_motion, skeleton, v_forward)
 
             # loss
-            loss_pose = config.weight_pose * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
-            loss_traj = config.weight_traj * utils.traj_loss(pred_traj, GT_traj)
-            loss_kl   = config.weight_kl * utils.kl_loss(pred_mean, pred_logvar)
-            loss      = loss_pose + loss_kl
+            loss_pose   = config.weight_pose * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
+            loss_traj   = config.weight_traj * utils.traj_loss(pred_traj, GT_traj)
+            loss_smooth = config.weight_smooth * (utils.smooth_loss(pred_local_R6) + utils.smooth_loss(pred_global_p))
+            loss_kl     = config.weight_kl * utils.kl_loss(pred_mean, pred_logvar)
+            loss        = loss_pose + loss_traj + loss_smooth + loss_kl
 
             # backward
             optim.zero_grad()
@@ -94,10 +96,11 @@ if __name__ == "__main__":
             optim.step()
 
             # log
-            loss_dict["total"] += loss.item()
-            loss_dict["pose"]  += loss_pose.item()
-            loss_dict["traj"]  += loss_traj.item()
-            loss_dict["kl"]    += loss_kl.item()
+            loss_dict["total"]  += loss.item()
+            loss_dict["pose"]   += loss_pose.item()
+            loss_dict["traj"]   += loss_traj.item()
+            loss_dict["smooth"] += loss_smooth.item()
+            loss_dict["kl"]     += loss_kl.item()
 
             """ 3. Log """
             if iter % config.log_interval == 0:
@@ -109,9 +112,10 @@ if __name__ == "__main__":
                 model.eval()
                 with torch.no_grad():
                     val_loss_dict = {
-                        "total": 0,
-                        "pose":  0,
-                        "traj":  0,
+                        "total":  0,
+                        "pose":   0,
+                        "traj":   0,
+                        "smooth": 0,
                     }
                     for GT_motion in val_dataloader:
                         # GT motion data
@@ -130,14 +134,16 @@ if __name__ == "__main__":
                         pred_local_R6, pred_global_p, pred_traj  = utils.get_motion_and_trajectory(pred_motion, skeleton, v_forward)
 
                         # loss
-                        loss_pose = config.weight_pose * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
-                        loss_traj = config.weight_traj * utils.traj_loss(pred_traj, GT_traj)
-                        loss      = loss_pose + loss_traj
+                        loss_pose   = config.weight_pose * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
+                        loss_traj   = config.weight_traj * utils.traj_loss(pred_traj, GT_traj)
+                        loss_smooth = config.weight_smooth * (utils.smooth_loss(pred_local_R6) + utils.smooth_loss(pred_global_p))
+                        loss        = loss_pose + loss_traj + loss_smooth
 
                         # log
-                        val_loss_dict["total"] += loss.item()
-                        val_loss_dict["pose"]  += loss_pose.item()
-                        val_loss_dict["traj"]  += loss_traj.item()
+                        val_loss_dict["total"]  += loss.item()
+                        val_loss_dict["pose"]   += loss_pose.item()
+                        val_loss_dict["traj"]   += loss_traj.item()
+                        val_loss_dict["smooth"] += loss_smooth.item()
 
                 # write and print log
                 utils.write_log(writer, val_loss_dict, len(val_dataloader), iter, train=False)
