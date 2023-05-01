@@ -11,7 +11,7 @@ class MotionDataset(Dataset):
     Motion dataset for training and testing
     Features:
         - motion features (number of joints * 6 + 3) for each frame, 6D orientations and a 3D translation vector
-        - trajectory features (5) for each frame, a 3D forward vector and a 2D xz position vector
+        - trajectory features (4) for each frame, a 2D base xz position and a 2D forward vector
     """
     def __init__(self, train, config):
         self.train  = train
@@ -29,14 +29,29 @@ class MotionDataset(Dataset):
     def __getitem__(self, idx):
         return self.features[idx]
 
-    def statistics(self, dim=(0, 1)):
-        print(f"Calculating MotionDataset mean and std, dim={dim}...")
+    def motion_statistics(self, dim=(0, 1)):
+        print(f"Calculating MotionDataset motion_mean and motion_std, dim={dim}...")
 
         # calculate statistics from training set
         trainset = MotionDataset(True, self.config)
 
         # mean and std
         X = torch.stack([trainset[i] for i in range(len(trainset))], dim=0)
+        X = X[..., :-4]
+        mean = torch.mean(X, dim=dim)
+        std = torch.std(X, dim=dim) + 1e-8
+
+        return mean, std
+
+    def traj_statistics(self, dim=(0, 1)):
+        print(f"Calculating MotionDataset traj_mean and traj_std, dim={dim}...")
+
+        # calculate statistics from training set
+        trainset = MotionDataset(True, self.config)
+
+        # mean and std
+        X = torch.stack([trainset[i] for i in range(len(trainset))], dim=0)
+        X = X[..., -4:]
         mean = torch.mean(X, dim=dim)
         std = torch.std(X, dim=dim) + 1e-8
 

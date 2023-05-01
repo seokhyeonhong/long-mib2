@@ -98,11 +98,10 @@ def get_motion_and_trajectory(motion, skeleton, v_forward):
     local_R6, root_p = torch.split(motion, [D-3, 3], dim=-1)
     _, global_p = motionops.R6_fk(local_R6.reshape(B, T, -1, 6), root_p, skeleton)
 
-    # trajectory
-    root_xz = root_p[..., (0, 2)]
+    # trajectory on xz plane
     root_fwd = torch.matmul(rotation.R6_to_R(local_R6[..., :6]), v_forward)
     root_fwd = F.normalize(root_fwd * torchconst.XZ(motion.device), dim=-1)
-    traj = torch.cat([root_xz, root_fwd], dim=-1)
+    traj = torch.cat([root_p[..., (0, 2)], root_fwd[..., (0, 2)]], dim=-1)
 
     return local_R6.reshape(B, T, -1, 6), global_p.reshape(B, T, -1, 3), traj
 
@@ -253,8 +252,8 @@ def score_loss(pred, gt):
     return torch.mean(loss)
 
 def traj_loss(pred, gt):
-    # pred: (B, T, 5)
-    # gt: (B, T, 5)
+    # pred: (B, T, 4)
+    # gt: (B, T, 4)
     loss_xz = F.l1_loss(pred[..., :2], gt[..., :2])
     loss_fwd = F.l1_loss(1 - torch.sum(pred[..., 2:] * gt[..., 2:], dim=-1), torch.zeros_like(pred[..., 0]))
     return loss_xz + loss_fwd

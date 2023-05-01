@@ -32,18 +32,20 @@ if __name__ == "__main__":
     skeleton    = dataset.skeleton
     v_forward   = torch.from_numpy(config.v_forward).to(device)
 
-    motion_mean, motion_std = dataset.statistics()
+    motion_mean, motion_std = dataset.motion_statistics()
     motion_mean, motion_std = motion_mean.to(device), motion_std.to(device)
+
+    traj_mean, traj_std = dataset.traj_statistics()
+    traj_mean, traj_std = traj_mean.to(device), traj_std.to(device)
     
     dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
 
     # model
     print("Initializing model...")
-    model = MotionPredictionVAE(dataset.shape[-1], config).to(device)
+    model = MotionPredictionVAE(dataset.shape[-1] - 4, 4, config).to(device)
     optim = torch.optim.Adam(model.parameters(), lr=config.lr, betas=(0.9, 0.98), eps=1e-9)
-    # scheduler = utils.get_noam_scheduler(config, optim)
-    init_epoch, iter = utils.load_latest_ckpt(model, optim, config)#, scheduler=scheduler)
+    init_epoch, iter = utils.load_latest_ckpt(model, optim, config)
     init_iter = iter
 
     # save and log
@@ -67,12 +69,14 @@ if __name__ == "__main__":
             """ 1. GT motion data """
             B, T, D = GT_motion.shape
             GT_motion = GT_motion.to(device)
-            GT_local_R6, GT_global_p, GT_traj = utils.get_motion_and_trajectory(GT_motion, skeleton, v_forward)
+            GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
+            GT_local_R6, GT_global_p = utils.get_motion(GT_motion, skeleton)
 
             """ 2. Train KF-VAE """
             # forward
-            batch = (GT_motion - motion_mean) / motion_std
-            pred_motion, pred_mean, pred_logvar = model.forward(batch, GT_traj)
+            motion = (GT_motion - motion_mean) / motion_std
+            traj   = (GT_traj - traj_mean) / traj_std
+            pred_motion, pred_mean, pred_logvar = model.forward(motion, traj)
 
             # prediction
             pred_motion = pred_motion * motion_std + motion_mean
@@ -113,11 +117,13 @@ if __name__ == "__main__":
                         # GT motion data
                         B, T, D = GT_motion.shape
                         GT_motion = GT_motion.to(device)
-                        GT_local_R6, GT_global_p, GT_traj = utils.get_motion_and_trajectory(GT_motion, skeleton, v_forward)
+                        GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
+                        GT_local_R6, GT_global_p = utils.get_motion(GT_motion, skeleton)
 
                         # forward
-                        batch = (GT_motion - motion_mean) / motion_std
-                        pred_motion = model.sample(batch, GT_traj)
+                        motion = (GT_motion - motion_mean) / motion_std
+                        traj   = (GT_traj - traj_mean) / traj_std
+                        pred_motion = model.sample(motion, traj)
 
                         # prediction
                         pred_motion = pred_motion * motion_std + motion_mean
@@ -126,6 +132,7 @@ if __name__ == "__main__":
                         # loss
                         loss_pose = config.weight_pose * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
                         loss_traj = config.weight_traj * utils.traj_loss(pred_traj, GT_traj)
+                        loss      = loss_pose + loss_traj
 
                         # log
                         val_loss_dict["total"] += loss.item()
@@ -141,11 +148,11 @@ if __name__ == "__main__":
 
             """ 5. Save checkpoint """
             if iter % config.save_interval == 0:
-                utils.save_ckpt(model, optim, epoch, iter, config)#, scheduler=scheduler)
+                utils.save_ckpt(model, optim, epoch, iter, config)
                 tqdm.write(f"Saved checkpoint at iter {iter}")
             
             # update iter
             iter += 1
     
     print(f"Training finished in {time.perf_counter() - start_time:.2f} seconds")
-    utils.save_ckpt(model, optim, epoch, iter, config)#, scheduler=scheduler)
+    utils.save_ckpt(model, optim, epoch, iter, config)

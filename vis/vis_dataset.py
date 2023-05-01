@@ -73,8 +73,7 @@ if __name__ == "__main__":
         """ 1. GT motion data """
         B, T, D = GT_motion.shape
         GT_motion = GT_motion.to(device)
-        # GT_local_R6, GT_global_p, GT_traj = utils.get_motion_and_trajectory(GT_motion, skeleton, v_forward)
-        GT_local_R6, GT_root_p = torch.split(GT_motion, [D-3, 3], dim=-1)
+        GT_local_R6, GT_root_p, GT_traj = torch.split(GT_motion, [D-7, 3, 4], dim=-1)
         GT_local_R = rotation.R6_to_R(GT_local_R6.reshape(B, T, -1, 6))
 
         # print(F.normalize(torch.matmul(GT_local_R[:, :, 0], v_forward) * torchconst.XZ(device), dim=-1))

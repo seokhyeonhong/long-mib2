@@ -27,19 +27,23 @@ if __name__ == "__main__":
 
     # dataset
     print("Loading dataset...")
-    dataset    = MotionDataset(train=False, config=config)
-    skeleton   = dataset.skeleton
+    dataset     = MotionDataset(train=True, config=config)
+    val_dataset = MotionDataset(train=False, config=config)
+    skeleton    = dataset.skeleton
     v_forward   = torch.from_numpy(config.v_forward).to(device)
 
-    motion_mean, motion_std = dataset.statistics()
+    motion_mean, motion_std = dataset.motion_statistics()
     motion_mean, motion_std = motion_mean.to(device), motion_std.to(device)
 
+    traj_mean, traj_std = dataset.traj_statistics()
+    traj_mean, traj_std = traj_mean.to(device), traj_std.to(device)
+    
     dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 
     # model
     print("Initializing model...")
-    model = MotionPredictionVAE(dataset.shape[-1], config).to(device)
-    utils.load_model(model, config, 150000)
+    model = MotionPredictionVAE(dataset.shape[-1] - 4, 4, config).to(device)
+    utils.load_model(model, config)
     model.eval()
 
     # character
@@ -51,22 +55,20 @@ if __name__ == "__main__":
             """ 1. GT motion data """
             B, T, D = GT_motion.shape
             GT_motion = GT_motion.to(device)
-            GT_local_R6, GT_global_p, GT_traj = utils.get_motion_and_trajectory(GT_motion, skeleton, v_forward)
-            GT_traj = utils.get_interpolated_trajectory(GT_traj, config.context_frames)
-
+            GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
+            GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
             GT_local_R = rotation.R6_to_R(GT_local_R6.reshape(B, T, -1, 6))
-            GT_root_p  = GT_global_p[:, :, 0, :]
 
             """ 2. Train KF-VAE """
             # forward
-            batch = (GT_motion - motion_mean) / motion_std
-            pred_motion = model.sample(batch, GT_traj)
+            motion = (GT_motion - motion_mean) / motion_std
+            traj   = (GT_traj - traj_mean) / traj_std
+            pred_motion = model.sample(motion, traj)
             pred_motion = pred_motion * motion_std + motion_mean
 
             # get motion
-            pred_local_R6, pred_global_p, pred_traj  = utils.get_motion_and_trajectory(pred_motion, skeleton, v_forward)
+            pred_local_R6, pred_root_p = torch.split(pred_motion, [D-7, 3], dim=-1)
             pred_local_R = rotation.R6_to_R(pred_local_R6.reshape(B, T, -1, 6))
-            pred_root_p  = pred_global_p[:, :, 0, :]
 
             # animation
             GT_local_R = GT_local_R.reshape(B*T, -1, 3, 3)
