@@ -16,7 +16,7 @@ from pymovis.ops import rotation
 from utility import utils
 from utility.config import Config
 from utility.dataset import MotionDataset
-from vis.visapp import TwoMotionApp
+from vis.visapp import KeyframeApp
 from model.mpvae import MotionPredictionVAE
 from model.mrnet import MotionRefineNet
 
@@ -66,13 +66,14 @@ if __name__ == "__main__":
             GT_motion = GT_motion.to(device)
             GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
 
-            # GT_motion = utils.get_interpolated_motion(GT_motion, config.context_frames)
-            # GT_traj = utils.get_interpolated_trajectory(GT_traj, config.context_frames)
+            GT_motion = utils.get_interpolated_motion(GT_motion, config.context_frames)
+            GT_traj = utils.get_interpolated_trajectory(GT_traj, config.context_frames)
             GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
 
             """ 2. For each batch """
             results = []
-            for b in tqdm(range(B), leave=False):
+            keyframes = []
+            for b in range(B):
                 batch = GT_motion[b:b+1].clone()
                 start_frame = 0
                 end_frame = 0
@@ -105,6 +106,7 @@ if __name__ == "__main__":
 
                         # get keyframe (= max diff frame)
                         keyframe = torch.argmax(diff, dim=1).item() + config.context_frames + 5
+                        keyframes.append(start_frame + keyframe + b * T)
                     else:
                         # set final frame as keyframe
                         keyframe = end_frame - start_frame - 1
@@ -151,5 +153,5 @@ if __name__ == "__main__":
             pred_motion = Motion.from_torch(skeleton, pred_local_R, pred_root_p)
 
             app_manager = AppManager()
-            app = TwoMotionApp(GT_motion, pred_motion, ybot.model(), T)
+            app = KeyframeApp(GT_motion, pred_motion, ybot.model(), T, keyframes)
             app_manager.run(app)

@@ -155,7 +155,7 @@ def get_interpolated_trajectory(traj, context_frames):
     fwd = torch.matmul(R, fwd_from.unsqueeze(-1)).squeeze(-1)
     res[:, context_frames-1:, 2:] = fwd
     
-    return res[..., (0, 1, 3, 4)]
+    return res[..., (0, 1, 3, 413)]
 
 def get_interpolated_motion(motion, context_frames):
     B, T, D = motion.shape
