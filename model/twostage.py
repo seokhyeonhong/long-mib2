@@ -143,7 +143,7 @@ class DetailTransformer(nn.Module):
         
         # encoders
         self.encoder = nn.Sequential(
-            nn.Linear(self.d_motion * 2, self.d_model), # (motion, mask)
+            nn.Linear(self.d_motion + 1 + 4, self.d_model), # (motion, mask(=1), traj(=4))
             nn.PReLU(),
             nn.Dropout(self.dropout),
             nn.Linear(self.d_model, self.d_model),
@@ -174,13 +174,13 @@ class DetailTransformer(nn.Module):
             nn.Linear(self.d_model, self.d_motion + 4),
         )
     
-    def forward(self, x, batch_mask):
+    def forward(self, x, traj, batch_mask):
         B, T, D = x.shape
 
         original_x = x.clone()
         
         # mask
-        x = self.encoder(torch.cat([x, batch_mask], dim=-1))
+        x = self.encoder(torch.cat([x, traj, batch_mask], dim=-1))
 
         # relative distance range: [-T+1, ..., T-1], 2T-1 values in total
         rel_dist = torch.arange(-T+1, T, dtype=torch.float32).unsqueeze(-1).to(x.device) # (2T-1, 1)
