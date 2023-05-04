@@ -16,7 +16,7 @@ from pymovis.ops import rotation
 from utility import utils
 from utility.config import Config
 from utility.dataset import MotionDataset
-from vis.visapp import ContextMotionApp
+from vis.visapp import TwoMotionApp
 from model.mpvae import MotionPredictionVAE
 
 if __name__ == "__main__":
@@ -42,7 +42,7 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = MotionPredictionVAE(dataset.shape[-1] - 4, 4, config).to(device)
+    model = MotionPredictionVAE(len(motion_mean), len(traj_mean), config).to(device)
     utils.load_model(model, config)
     model.eval()
 
@@ -80,5 +80,5 @@ if __name__ == "__main__":
             pred_motion = Motion.from_torch(skeleton, pred_local_R, pred_root_p)
 
             app_manager = AppManager()
-            app = ContextMotionApp(GT_motion, pred_motion, ybot.model(), T)
+            app = TwoMotionApp(GT_motion, pred_motion, ybot.model(), T)
             app_manager.run(app)

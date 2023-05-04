@@ -88,13 +88,13 @@ class ContextTransformer(nn.Module):
             nn.Linear(self.d_model, self.d_motion),
         )
     
-    def forward(self, x, traj):
+    def forward(self, x, traj, ratio_constrained=0.1):
         B, T, D = x.shape
 
         original_x = x.clone()
         
         # mask
-        batch_mask, atten_mask = get_mask(x, self.config.context_frames)
+        batch_mask, atten_mask = get_mask(x, self.config.context_frames, ratio_constrained=ratio_constrained)
         masked_x = x * batch_mask
 
         # encoder

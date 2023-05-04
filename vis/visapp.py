@@ -79,6 +79,10 @@ class TwoMotionApp(MotionApp):
         self.pred_model.meshes[0].materials[0].albedo = glm.vec3(0.5, 0.5, 0.5)
 
         self.target_model  = copy.deepcopy(self.GT_model)
+
+        # traj
+        self.traj = Render.sphere(0.05).set_albedo([1, 0, 0])
+        self.show_traj = False
     
     def render(self):
         ith_motion = self.frame // self.frames_per_motion
@@ -92,6 +96,11 @@ class TwoMotionApp(MotionApp):
             self.motion = self.pred_motion
             self.model = self.pred_model
             super().render(render_xray=self.show_skeleton)
+        
+        if self.show_traj:
+            for t in range(self.frames_per_motion):
+                pos = self.GT_motion.poses[ith_motion*self.frames_per_motion + t].root_p
+                self.traj.set_position(pos[0], 0, pos[2]).draw()
 
         # draw target
         self.target_model.set_pose_by_source(self.GT_motion.poses[(ith_motion+1)*self.frames_per_motion - 1])
@@ -110,6 +119,8 @@ class TwoMotionApp(MotionApp):
             self.show_pred = not self.show_pred
         elif key == glfw.KEY_S and action == glfw.PRESS:
             self.show_skeleton = not self.show_skeleton
+        elif key == glfw.KEY_E and action == glfw.PRESS:
+            self.show_traj = not self.show_traj
 
 class DetailMotionApp(MotionApp):
     def __init__(self, GT_motion, context_motion, detail_motion, ybot_model, frames_per_motion):

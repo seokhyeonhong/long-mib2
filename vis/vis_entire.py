@@ -85,6 +85,7 @@ if __name__ == "__main__":
                     R_diff, root_p_diff = utils.get_align_Rp(batch, ctx_frame, v_forward)
                     motion_batch = utils.align_motion(batch, R_diff, root_p_diff)
                     traj_batch   = utils.get_trajectory(motion_batch, v_forward)
+                    breakpoint()
 
                     """ 2-2. Generate motion from MP-VAE """
                     motion_batch = (motion_batch - motion_mean) / motion_std

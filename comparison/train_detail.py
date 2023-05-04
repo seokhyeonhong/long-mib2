@@ -53,9 +53,9 @@ if __name__ == "__main__":
     ctx_model.eval()
 
     det_model = DetailTransformer(len(motion_mean), config).to(device)
-    optim = torch.optim.Adam(det_model.parameters(), lr=config.d_model**-0.5, betas=(0.9, 0.999), eps=1e-8)
-    scheduler = utils.get_noam_scheduler(config, optim)
-    init_epoch, iter = utils.load_latest_ckpt(det_model, optim, config, scheduler)
+    optim = torch.optim.Adam(det_model.parameters(), lr=config.lr, betas=(0.9, 0.999), eps=1e-8)
+    # scheduler = utils.get_noam_scheduler(config, optim)
+    init_epoch, iter = utils.load_latest_ckpt(det_model, optim, config)#, scheduler)
 
     # save and log
     if not os.path.exists(config.save_dir):
@@ -101,16 +101,16 @@ if __name__ == "__main__":
             # loss
             loss_rot     = config.weight_rot     * utils.recon_loss(pred_local_R6[:, config.context_frames:-1], GT_local_R6[:, config.context_frames:-1])
             loss_pos     = config.weight_pos     * utils.recon_loss(pred_global_p[:, config.context_frames:-1], GT_global_p[:, config.context_frames:-1])
-            loss_traj    = config.weight_traj     * utils.traj_loss(pred_traj[:, config.context_frames:-1], GT_traj[:, config.context_frames:-1])
+            loss_traj    = config.weight_traj    * utils.traj_loss(pred_traj[:, config.context_frames:-1], GT_traj[:, config.context_frames:-1])
             loss_contact = config.weight_contact * utils.recon_loss(pred_contact[:, config.context_frames:-1], GT_contact[:, config.context_frames:-1])
             loss_foot    = config.weight_foot    * utils.foot_loss(pred_feet_v[:, config.context_frames:-1], pred_contact[:, config.context_frames:-1].detach())
-            loss = loss_rot + loss_pos + loss_traj + loss_contact + loss_foot
+            loss         = loss_rot + loss_pos + loss_traj + loss_contact + loss_foot
 
             # backward
             optim.zero_grad()
             loss.backward()
             optim.step()
-            scheduler.step()
+            # scheduler.step()
 
             # log
             loss_dict["total"]   += loss.item()
@@ -180,10 +180,10 @@ if __name__ == "__main__":
                 det_model.train()
 
             if iter % config.save_interval == 0:
-                utils.save_ckpt(det_model, optim, epoch, iter, config, scheduler)
+                utils.save_ckpt(det_model, optim, epoch, iter, config)#, scheduler)
                 tqdm.write(f"Saved checkpoint at iter {iter}")
             
             iter += 1
     
     print(f"Training finished in {time.perf_counter() - start_time:.2f} seconds")
-    utils.save_ckpt(det_model, optim, epoch, iter, config, scheduler)
+    utils.save_ckpt(det_model, optim, epoch, iter, config)#, scheduler)

@@ -17,5 +17,5 @@
 
     "batch_size": 64,
     "min_transition": 5,
-    "max_transition": 30
+    "max_transition": 60
 }
