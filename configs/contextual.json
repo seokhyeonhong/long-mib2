@@ -12,13 +12,13 @@
     "contact_joint_names": ["LeftFoot", "LeftToeBase", "RightFoot", "RightToeBase"],
     "contact_vel_threshold": 2e-4,
 
-    "log_dir": "log/ContextualVAE",
+    "log_dir": "log/ContextualTransformer",
     "log_interval": 100,
 
-    "save_dir": "save/ContextualVAE",
+    "save_dir": "save/ContextualTransformer",
     "save_interval": 10000,
 
-    "val_interval": 1000,
+    "val_interval": 1000000,
 
     "batch_size": 64,
     "epochs": 2000,
@@ -26,7 +26,8 @@
     "warmup_iters": 8000,
 
     "min_transition": 5,
-    "max_transition": 90,
+    "max_transition": 30,
+    "max_future": 60,
 
     "dropout": 0.0,
     "n_layers": 6,

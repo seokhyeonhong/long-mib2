@@ -66,8 +66,8 @@ if __name__ == "__main__":
             GT_motion = GT_motion.to(device)
             GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
 
-            GT_motion = utils.get_interpolated_motion(GT_motion, config.context_frames)
-            GT_traj = utils.get_interpolated_trajectory(GT_traj, config.context_frames)
+            # GT_motion = utils.get_interpolated_motion(GT_motion, config.context_frames)
+            # GT_traj = utils.get_interpolated_trajectory(GT_traj, config.context_frames)
             GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
 
             """ 2. For each batch """
@@ -85,7 +85,6 @@ if __name__ == "__main__":
                     R_diff, root_p_diff = utils.get_align_Rp(batch, ctx_frame, v_forward)
                     motion_batch = utils.align_motion(batch, R_diff, root_p_diff)
                     traj_batch   = utils.get_trajectory(motion_batch, v_forward)
-                    breakpoint()
 
                     """ 2-2. Generate motion from MP-VAE """
                     motion_batch = (motion_batch - motion_mean) / motion_std
@@ -116,18 +115,18 @@ if __name__ == "__main__":
                     # split
                     pred_motion = pred_motion[:, :keyframe+1]
 
-                    """ 2-4. Interpolation and refine """
-                    # interpolation & mask
-                    interp_motion = utils.get_interpolated_motion(pred_motion, config.context_frames) # (1, keyframe+1, D)
+                    # """ 2-4. Interpolation and refine """
+                    # # interpolation & mask
+                    # interp_motion = utils.get_interpolated_motion(pred_motion, config.context_frames) # (1, keyframe+1, D)
 
-                    mask = torch.ones(1, keyframe+1, 1, device=device, dtype=torch.float32)
-                    mask[:, config.context_frames:-1, :] = 0
+                    # mask = torch.ones(1, keyframe+1, 1, device=device, dtype=torch.float32)
+                    # mask[:, config.context_frames:-1, :] = 0
 
-                    # refine
-                    motion_batch = (interp_motion - motion_mean) / motion_std
-                    traj_batch   = traj_batch[:, start_frame:start_frame+keyframe+1]
-                    pred_motion, pred_contact = mrnet.forward(motion_batch, mask, traj_batch)
-                    pred_motion  = pred_motion * motion_std + motion_mean
+                    # # refine
+                    # motion_batch = (interp_motion - motion_mean) / motion_std
+                    # traj_batch   = traj_batch[:, start_frame:start_frame+keyframe+1]
+                    # pred_motion, pred_contact = mrnet.forward(motion_batch, mask, traj_batch)
+                    # pred_motion  = pred_motion * motion_std + motion_mean
 
                     """ 2-5. Restore to the original position and orientation """
                     pred_motion = utils.restore_motion(pred_motion, R_diff, root_p_diff)

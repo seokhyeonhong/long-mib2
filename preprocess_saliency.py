@@ -91,7 +91,7 @@ def get_keyframes(config, train=True):
 
     # get salient keyframes
     for idx, feature in tqdm(enumerate(dataloader)):
-        feature = feature[:, config.context_frames-1:]
+        feature = feature[:, config.context_frames-1:, :-4] # exclude trajectory
         feature = feature.to(device)
         
         # split motion features to start from context frame
@@ -170,11 +170,11 @@ def generate_dataset(config, train=True):
     save_features = []
     for idx, motion in tqdm(enumerate(dataset)):
         T, D = motion.shape
-        local_R6, root_p = torch.split(motion, [D-3, 3], dim=-1)
+        local_R6, root_p, traj = torch.split(motion, [D-7, 3, 4], dim=-1)
 
         keyframes = keyframe_data[idx]
         scores = torch.zeros(T - config.context_frames + 1)
-        for k in range(3, T):
+        for k in range(3, T - config.context_frames + 1):
             kfs = keyframes[k]
             scores[kfs] += 1
 
@@ -186,7 +186,7 @@ def generate_dataset(config, train=True):
         ones = torch.ones(config.context_frames - 1, 1)
         scores = torch.cat([ones, scores], dim=0)
 
-        feature = torch.cat([local_R6, root_p, scores], dim=-1).cpu().numpy()
+        feature = torch.cat([local_R6, root_p, traj, scores], dim=-1).cpu().numpy()
         save_features.append(feature)
 
     save_features = np.stack(save_features, axis=0)
@@ -196,7 +196,7 @@ def generate_dataset(config, train=True):
 def main():
     config = Config.load("configs/dataset.json")
 
-    get_keyframes(config, train=True)
+    # get_keyframes(config, train=True)
     generate_dataset(config, train=True)
 
     get_keyframes(config, train=False)

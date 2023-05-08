@@ -230,6 +230,23 @@ def align_motion(motion, R_diff, root_p_diff):
 
     return torch.cat([local_R6, root_p], dim=-1)
 
+def align_traj(traj, R_diff, p_diff):
+    # position and forward
+    pos, fwd = traj[..., :2], traj[..., 2:]
+    pos = torch.stack([pos[..., 0], torch.zeros_like(pos[..., 1]), pos[..., 1]], dim=-1)
+    fwd = torch.stack([fwd[..., 0], torch.zeros_like(fwd[..., 1]), fwd[..., 1]], dim=-1)
+
+    # align position
+    pos = torch.matmul(R_diff, (pos - p_diff).unsqueeze(-1)).squeeze(-1)
+
+    # align forward
+    fwd = torch.matmul(R_diff, fwd.unsqueeze(-1)).squeeze(-1)
+
+    # align trajectory
+    traj = torch.cat([pos[..., (0, 2)], fwd[..., (0, 2)]], dim=-1)
+
+    return traj
+
 def restore_motion(motion, R_diff, root_p_diff):
     B, T, D = motion.shape
 

@@ -81,14 +81,29 @@ class KeyframeDataset(Dataset):
     def __getitem__(self, idx):
         return self.features[idx]
 
-    def statistics(self, dim=(0, 1)):
-        print(f"Calculating KeyframeDataset mean and std, dim={dim}...")
+    def motion_statistics(self, dim=(0, 1)):
+        print(f"Calculating KeyframeDataset motion_mean and motion_std, dim={dim}...")
 
         # calculate statistics from training set
         trainset = KeyframeDataset(True, self.config)
 
         # mean and std
         X = torch.stack([trainset[i] for i in range(len(trainset))], dim=0)
+        X = X[..., :-5] # 4 for traj, 1 for score
+        mean = torch.mean(X, dim=dim)
+        std = torch.std(X, dim=dim) + 1e-8
+
+        return mean, std
+
+    def traj_statistics(self, dim=(0, 1)):
+        print(f"Calculating KeyframeDataset traj_mean and traj_std, dim={dim}...")
+
+        # calculate statistics from training set
+        trainset = KeyframeDataset(True, self.config)
+
+        # mean and std
+        X = torch.stack([trainset[i] for i in range(len(trainset))], dim=0)
+        X = X[..., -5:-1]
         mean = torch.mean(X, dim=dim)
         std = torch.std(X, dim=dim) + 1e-8
 

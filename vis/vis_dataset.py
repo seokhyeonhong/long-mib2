@@ -16,6 +16,7 @@ from pymovis.ops import rotation
 
 from utility.config import Config
 from utility.dataset import MotionDataset
+from utility import utils
 from vis.visapp import SingleMotionApp
 
 class DatasetApp(MotionApp):
@@ -49,7 +50,7 @@ class DatasetApp(MotionApp):
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = Config.load("configs/mpvae.json")
+    config = Config.load("configs/dataset.json")
 
     dataset = MotionDataset(train=False, config=config)
     v_forward = torch.from_numpy(config.v_forward).to(device)
@@ -60,9 +61,12 @@ if __name__ == "__main__":
 
     for GT_motion in dataloader:
         """ 1. GT motion data """
+        GT_motion = GT_motion[:, :60]
         B, T, D = GT_motion.shape
         GT_motion = GT_motion.to(device)
-        GT_local_R6, GT_root_p, GT_traj = torch.split(GT_motion, [D-7, 3, 4], dim=-1)
+
+        GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
+        GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
         GT_local_R = rotation.R6_to_R(GT_local_R6.reshape(B, T, -1, 6))
 
         # print(F.normalize(torch.matmul(GT_local_R[:, :, 0], v_forward) * torchconst.XZ(device), dim=-1))
@@ -73,5 +77,5 @@ if __name__ == "__main__":
 
         """ 3. Visualization """
         app_manager = AppManager()
-        app = DatasetApp(motion, character.model(), GT_traj.reshape(B*T, 4))
+        app = SingleMotionApp(motion, character.model(), T)
         app_manager.run(app)

@@ -69,31 +69,44 @@ if __name__ == "__main__":
         for GT_motion in tqdm(dataloader, desc=f"Epoch {epoch} / {config.epochs}", leave=False):
             """ 1. Random transition length """
             transition = random.randint(config.min_transition, config.max_transition)
-            T = config.context_frames + transition + 1
-            GT_motion = GT_motion[:, :T, :].to(device)
 
+            # constrained target
+            constrained = random.random() < 0.5
+            if constrained:
+                target_pos = config.context_frames + transition
+            else:
+                target_pos = random.randint(config.context_frames + transition, config.window_length-1)
+            
             """ 2. Get GT motion and trajectory """
             # context frames - transition - target frame
-            GT_motion = torch.cat([GT_motion[:, :config.context_frames+1], GT_motion[:, -1:]], dim=1)
-            GT_motion, GT_traj = torch.split(GT_motion, [GT_motion.shape[-1]-4, 4], dim=-1)
+            GT_motion = torch.cat([GT_motion[:, :config.context_frames+transition], GT_motion[:, target_pos:target_pos+1]], dim=1)
+            GT_motion = GT_motion.to(device)
+            B, T, D = GT_motion.shape
+
+            # get motion and trajectory
+            GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
             GT_local_R6, GT_global_p = utils.get_motion(GT_motion, skeleton)
 
-            """ 2. Train ContextualVAE """
+            """ 3. Train """
             # forward
             motion = (GT_motion - motion_mean) / motion_std
             traj   = (GT_traj - traj_mean) / traj_std
-            pred_motion, pred_mean, pred_logvar = model.forward(motion, traj, T-1)
-
-            # prediction
+            pred_motion, pred_mean, pred_logvar = model.forward(motion, traj, target_pos, constrained=constrained)
             pred_motion = pred_motion * motion_std + motion_mean
             pred_local_R6, pred_global_p, pred_traj  = utils.get_motion_and_trajectory(pred_motion, skeleton, v_forward)
 
             # loss
-            loss_pose   = config.weight_pose * (utils.recon_loss(pred_local_R6[:, -2], GT_local_R6[:, -2]) + utils.recon_loss(pred_global_p[:, -2], GT_global_p[:, -2]))
-            loss_traj   = config.weight_traj * utils.traj_loss(pred_traj[:, -2], GT_traj[:, -2])
-            loss_smooth = config.weight_smooth * (utils.smooth_loss(pred_local_R6[:, -2:]) + utils.smooth_loss(pred_global_p[:, -2:]))
-            loss_kl     = config.weight_kl * utils.kl_loss(pred_mean, pred_logvar)
-            loss        = loss_pose + loss_traj + loss_smooth + loss_kl
+            if constrained:
+                loss_pose   = config.weight_pose * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
+                loss_traj   = config.weight_traj * utils.traj_loss(pred_traj, GT_traj)
+                loss_smooth = config.weight_smooth * (utils.smooth_loss(pred_local_R6) + utils.smooth_loss(pred_global_p))
+            else:
+                loss_pose   = config.weight_pose * (utils.recon_loss(pred_local_R6[:, :-1], GT_local_R6[:, :-1]) + utils.recon_loss(pred_global_p[:, :-1], GT_global_p[:, :-1]))
+                loss_traj   = config.weight_traj * utils.traj_loss(pred_traj[:, :-1], GT_traj[:, :-1])
+                loss_smooth = config.weight_smooth * (utils.smooth_loss(pred_global_p[:, :-1]))
+
+            loss_kl = config.weight_kl * utils.kl_loss(pred_mean, pred_logvar)
+            loss    = loss_pose + loss_traj + loss_smooth + loss_kl
 
             # backward
             optim.zero_grad()
@@ -144,7 +157,7 @@ if __name__ == "__main__":
                             motion = (motion - motion_mean) / motion_std
                             traj   = (traj - traj_mean) / traj_std
                             target_pos = min((T-1) - t, config.context_frames + config.max_transition + 1)
-                            output_motion = model.sample(motion, traj, target_pos)
+                            output_motion = model.sample(motion, traj, target_pos, constrained=constrained)
                             output_motion = output_motion * motion_std + motion_mean
 
                             # re-align
