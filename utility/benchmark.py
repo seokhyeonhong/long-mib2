@@ -1,37 +1,41 @@
 import os
 import torch
 
-def L2P(norm_pred_global_p, norm_GT_global_p):
-    # norm_pred_global_p: (B, T, J, 3)
-    # norm_GT_global_p: (B, T, J, 3)
-    B, T, J, _ = norm_pred_global_p.shape
-    norm_pred_global_p = norm_pred_global_p.reshape(B, T, J*3)
-    norm_GT_global_p = norm_GT_global_p.reshape(B, T, J*3)
+def L2P(pred_global_p, GT_global_p, context_frames):
+    # pred_global_p: (B, T, J, 3)
+    # GT_global_p: (B, T, J, 3)
+    # return: (B, T, J)
     
+    pred_global_p = pred_global_p[:, context_frames:]
+    GT_global_p   = GT_global_p[:, context_frames:]
     # L2P
-    L2P = torch.norm(norm_pred_global_p - norm_GT_global_p, dim=-1)
-    return L2P
+    norm = torch.norm(pred_global_p - GT_global_p, dim=-1)
+    return torch.sum(norm, dim=-1)
 
-def L2Q(norm_pred_global_Q, norm_GT_global_Q):
-    # norm_pred_global_Q: (B, T, J, 4)
-    # norm_GT_global_Q: (B, T, J, 4)
-    B, T, J, _ = norm_pred_global_Q.shape
-    w_positive = (norm_pred_global_Q[..., 0:1] > 0).float()
-    norm_pred_global_Q = norm_pred_global_Q * w_positive + (1 - w_positive) * (-norm_pred_global_Q)
+def L2Q(pred_global_Q, GT_global_Q, context_frames):
+    # pred_global_Q: (B, T, J, 4)
+    # GT_global_Q: (B, T, J, 4)
+
+    pred_global_Q = pred_global_Q[:, context_frames:]
+    GT_global_Q   = GT_global_Q[:, context_frames:]
+
+    B, T, J, _ = pred_global_Q.shape
+    w_positive = (pred_global_Q[..., 0:1] > 0).float()
+    pred_global_Q = pred_global_Q * w_positive + (1 - w_positive) * (-pred_global_Q)
     
-    w_positive = (norm_GT_global_Q[..., 0:1] > 0).float()
-    norm_GT_global_Q = norm_GT_global_Q * w_positive + (1 - w_positive) * (-norm_GT_global_Q)
-
-    norm_pred_global_Q = norm_pred_global_Q.reshape(B, T, J*4)
-    norm_GT_global_Q = norm_GT_global_Q.reshape(B, T, J*4)
+    w_positive = (GT_global_Q[..., 0:1] > 0).float()
+    GT_global_Q = GT_global_Q * w_positive + (1 - w_positive) * (-GT_global_Q)
     
     # L2Q
-    L2Q = torch.norm(norm_pred_global_Q - norm_GT_global_Q, dim=-1)
+    L2Q = torch.norm(pred_global_Q - GT_global_Q, dim=-1)
     return L2Q
 
-def NPSS(pred, GT):
+def NPSS(pred, GT, context_frames):
     # GT: (B, T, D)
     # pred: (B, T, D)
+
+    pred = pred[:, context_frames:]
+    GT   = GT[:, context_frames:]
 
     # Fourier coefficients along the time dimension
     GT_fourier_coeffs = torch.real(torch.fft.fft(GT, dim=1))
@@ -60,3 +64,14 @@ def NPSS(pred, GT):
     power_weighted_emd = torch.sum(emd * GT_power_sum) / torch.sum(GT_power_sum)
 
     return power_weighted_emd
+
+def L2T(pred_traj, GT_traj, context_frames):
+    # pred_traj: (B, T, 4)
+    # GT_traj: (B, T, 4)
+
+    pred_traj = pred_traj[:, context_frames:]
+    GT_traj   = GT_traj[:, context_frames:]
+
+    xz = torch.norm(pred_traj[..., 0:2] - GT_traj[..., 0:2], dim=-1) # (B, T)
+    fwd = torch.norm(pred_traj[..., 2:4] - GT_traj[..., 2:4], dim=-1) # (B, T)
+    return xz + fwd
