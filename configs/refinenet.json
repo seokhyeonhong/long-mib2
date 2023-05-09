@@ -1,7 +1,7 @@
 {
     "dataset_dir": "dataset",
 
-    "window_length": 101,
+    "window_length": 41,
     "window_offset": 20,
     "fps": 30,
     "context_frames": 10,
@@ -12,10 +12,10 @@
     "contact_joint_names": ["LeftFoot", "LeftToeBase", "RightFoot", "RightToeBase"],
     "contact_vel_threshold": 2e-4,
 
-    "log_dir": "log/KeyframeNet",
+    "log_dir": "log/RefineNet",
     "log_interval": 100,
 
-    "save_dir": "save/KeyframeNet",
+    "save_dir": "save/RefineNet",
     "save_interval": 10000,
 
     "val_interval": 1000,
@@ -36,6 +36,8 @@
     "pre_layernorm": true,
 
     "weight_pose": 1.0,
-    "weight_score": 1.0,
-    "weight_traj": 0.5
+    "weight_vel": 0.5,
+    "weight_traj": 0.5,
+    "weight_contact": 0.1,
+    "weight_foot": 0.1
 }

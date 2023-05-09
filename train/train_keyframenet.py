@@ -11,8 +11,7 @@ from torch.utils.tensorboard import SummaryWriter
 import time
 from tqdm import tqdm
 
-from pymovis.utils import util, torchconst
-from pymovis.ops import motionops, rotation, mathops
+from pymovis.utils import util
 
 from utility.dataset import KeyframeDataset
 from utility.config import Config
@@ -116,7 +115,7 @@ if __name__ == "__main__":
                         "score": 0,
                         "traj":  0,
                     }
-                    for GT_motion in tqdm(val_dataloader, desc=f"Validation", leave=False):
+                    for GT_keyframe in tqdm(val_dataloader, desc=f"Validation", leave=False):
                         """ 1. GT data """
                         B, T, D = GT_keyframe.shape
                         GT_keyframe = GT_keyframe.to(device)
@@ -134,7 +133,7 @@ if __name__ == "__main__":
                         # predicted motion
                         pred_local_R6, pred_global_p, pred_traj = utils.get_motion_and_trajectory(pred_motion, skeleton, v_forward)
 
-                        """ 3. Loss & Backward """
+                        """ 3. Loss """
                         # loss
                         loss_pose  = config.weight_pose * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
                         loss_score = config.weight_score * utils.recon_loss(pred_score, GT_score)
