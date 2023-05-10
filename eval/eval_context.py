@@ -10,12 +10,12 @@ from pymovis.ops import motionops, rotation, mathops
 from utility.dataset import MotionDataset
 from utility.config import Config
 from utility import benchmark, utils
-from model.refinenet import RefineNet
+from model.twostage import ContextTransformer
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     config     = Config.load("configs/dataset.json")
-    ref_config = Config.load("configs/refinenet.json")
+    ctx_config = Config.load("configs/context.json")
 
     # dataset - test
     print("Loading dataset...")
@@ -26,22 +26,22 @@ if __name__ == "__main__":
     test_mean, test_std = test_mean.to(device), test_std.to(device)
 
     # dataset - context
-    ref_dataset = MotionDataset(train=True, config=ref_config)
-    skeleton    = ref_dataset.skeleton
-    v_forward   = torch.from_numpy(ref_config.v_forward).to(device)
+    ctx_dataset = MotionDataset(train=True, config=ctx_config)
+    skeleton    = ctx_dataset.skeleton
+    v_forward   = torch.from_numpy(ctx_config.v_forward).to(device)
 
-    motion_mean, motion_std = ref_dataset.motion_statistics()
+    motion_mean, motion_std = ctx_dataset.motion_statistics()
     motion_mean, motion_std = motion_mean.to(device), motion_std.to(device)
 
-    traj_mean, traj_std = ref_dataset.traj_statistics()
+    traj_mean, traj_std = ctx_dataset.traj_statistics()
     traj_mean, traj_std = traj_mean.to(device), traj_std.to(device)
 
 
     # model
     print("Initializing model...")
-    model = RefineNet(len(motion_mean), len(traj_mean), ref_config).to(device)
-    utils.load_model(model, ref_config)
-    model.eval()
+    ctx_model = ContextTransformer(len(motion_mean), len(traj_mean), ctx_config).to(device)
+    utils.load_model(ctx_model, ctx_config)
+    ctx_model.eval()
 
     # evaluation
     transition = [5, 15, 30, 45]
@@ -69,11 +69,10 @@ if __name__ == "__main__":
                 GT_trajs.append(GT_traj)
 
                 """ 2. Forward """
-                # normalize - forward - denormalize
-                motion = utils.get_interpolated_motion(GT_motion, config.context_frames)
-                motion = (motion - motion_mean) / motion_std
+                # forward
+                motion = (GT_motion - motion_mean) / motion_std
                 traj   = (GT_traj - traj_mean) / traj_std
-                pred_motion, _ = model.forward(motion, traj)
+                pred_motion, mask = ctx_model.forward(motion, traj, ratio_constrained=0.0)
                 pred_motion = pred_motion * motion_std + motion_mean
 
                 # trajectory

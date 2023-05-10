@@ -52,18 +52,21 @@ if __name__ == "__main__":
     with torch.no_grad():
         for GT_motion in tqdm(dataloader):
             """ 1. GT data """
+            GT_motion = GT_motion[:, :config.context_frames+config.min_transition+1]
             B, T, D = GT_motion.shape
             GT_motion = GT_motion.to(device)
             GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
 
-            GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
-            GT_local_R = rotation.R6_to_R(GT_local_R6.reshape(B, T, -1, 6))
+            # GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
+            # GT_local_R = rotation.R6_to_R(GT_local_R6.reshape(B, T, -1, 6))
             
             """ 2. Forward """
             # normalize - forward - denormalize
             motion = utils.get_interpolated_motion(GT_motion, config.context_frames)
-            motion = (GT_motion - motion_mean) / motion_std
-            traj   = (GT_traj - traj_mean)   / traj_std
+            GT_local_R6, GT_root_p = torch.split(motion, [D-7, 3], dim=-1)
+            GT_local_R = rotation.R6_to_R(GT_local_R6.reshape(B, T, -1, 6))
+            motion = (motion - motion_mean) / motion_std
+            traj   = (GT_traj - traj_mean) / traj_std
             pred_motion, _ = model.forward(motion, traj)
             pred_motion = pred_motion * motion_std + motion_mean
 

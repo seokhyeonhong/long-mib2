@@ -12,3 +12,5 @@ bvh/
 *.npy
 *.pt
 *.pth
+*.docx
+*.xlsx

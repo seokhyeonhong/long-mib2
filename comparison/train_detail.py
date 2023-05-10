@@ -109,7 +109,6 @@ if __name__ == "__main__":
             optim.zero_grad()
             loss.backward()
             optim.step()
-            # scheduler.step()
 
             # log
             loss_dict["total"]   += loss.item()

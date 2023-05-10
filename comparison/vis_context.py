@@ -59,7 +59,6 @@ if __name__ == "__main__":
             B, T, D = GT_motion.shape
 
             GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
-            GT_motion[:, -1, :-3] = GT_motion[:, config.context_frames-1, :-3]
 
             GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
             GT_local_R = rotation.R6_to_R(GT_local_R6.reshape(B, T, -1, 6))

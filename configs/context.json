@@ -23,6 +23,7 @@
     "batch_size": 64,
     "epochs": 500,
     "warmup_iters": 8000,
+    "lr": 1e-4,
 
     "min_transition": 5,
     "max_transition": 30,
