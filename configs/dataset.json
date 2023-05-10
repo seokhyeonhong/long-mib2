@@ -1,7 +1,7 @@
 {
     "dataset_dir": "dataset",
 
-    "window_length": 101,
+    "window_length": 41,
     "window_offset": 20,
     "fps": 30,
     "context_frames": 10,

@@ -43,7 +43,7 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = ContextTransformer(len(motion_mean), config).to(device) # exclude trajectory
+    model = ContextTransformer(len(motion_mean), len(traj_mean), config).to(device)
     optim = torch.optim.Adam(model.parameters(), lr=config.d_model**-0.5, betas=(0.9, 0.999), eps=1e-8)
     scheduler = utils.get_noam_scheduler(config, optim)
     init_epoch, iter = utils.load_latest_ckpt(model, optim, config, scheduler)

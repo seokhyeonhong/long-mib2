@@ -27,15 +27,12 @@ def L2Q(pred_global_Q, GT_global_Q, context_frames):
     GT_global_Q = GT_global_Q * w_positive + (1 - w_positive) * (-GT_global_Q)
     
     # L2Q
-    L2Q = torch.norm(pred_global_Q - GT_global_Q, dim=-1)
-    return L2Q
+    norm = torch.norm(pred_global_Q - GT_global_Q, dim=-1)
+    return torch.sum(norm, dim=-1)
 
-def NPSS(pred, GT, context_frames):
+def NPSS(pred, GT):
     # GT: (B, T, D)
     # pred: (B, T, D)
-
-    pred = pred[:, context_frames:]
-    GT   = GT[:, context_frames:]
 
     # Fourier coefficients along the time dimension
     GT_fourier_coeffs = torch.real(torch.fft.fft(GT, dim=1))

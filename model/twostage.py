@@ -32,9 +32,10 @@ def get_keyframe_relative_position(window_length, context_frames):
     return p_kf
 
 class ContextTransformer(nn.Module):
-    def __init__(self, d_motion, config):
+    def __init__(self, d_motion, d_traj, config):
         super(ContextTransformer, self).__init__()
         self.d_motion = d_motion
+        self.d_traj = d_traj
         self.config = config
 
         self.d_model        = config.d_model
@@ -50,7 +51,7 @@ class ContextTransformer(nn.Module):
         
         # encoders
         self.encoder = nn.Sequential(
-            nn.Linear(self.d_motion + 1 + 4, self.d_model), # (motion, mask(=1), traj(=4))
+            nn.Linear(self.d_motion + self.d_traj + 1 , self.d_model), # (motion, traj, mask(=1))
             nn.PReLU(),
             nn.Dropout(self.dropout),
             nn.Linear(self.d_model, self.d_model),
@@ -125,9 +126,10 @@ class ContextTransformer(nn.Module):
         return x, batch_mask
 
 class DetailTransformer(nn.Module):
-    def __init__(self, d_motion, config):
+    def __init__(self, d_motion, d_traj, config):
         super(DetailTransformer, self).__init__()
         self.d_motion = d_motion
+        self.d_traj = d_traj
         self.config = config
 
         self.d_model        = config.d_model
@@ -143,7 +145,7 @@ class DetailTransformer(nn.Module):
         
         # encoders
         self.encoder = nn.Sequential(
-            nn.Linear(self.d_motion + 1 + 4, self.d_model), # (motion, mask(=1), traj(=4))
+            nn.Linear(self.d_motion + self.d_traj + 1, self.d_model), # (motion, traj, mask(=1))
             nn.PReLU(),
             nn.Dropout(self.dropout),
             nn.Linear(self.d_model, self.d_model),

@@ -48,14 +48,13 @@ if __name__ == "__main__":
     # model
     print("Initializing model...")
     ctx_config = Config.load("configs/context.json")
-    ctx_model = ContextTransformer(len(motion_mean), ctx_config).to(device)
+    ctx_model = ContextTransformer(len(motion_mean), len(traj_mean), ctx_config).to(device)
     utils.load_model(ctx_model, ctx_config)
     ctx_model.eval()
 
-    det_model = DetailTransformer(len(motion_mean), config).to(device)
+    det_model = DetailTransformer(len(motion_mean), len(traj_mean), config).to(device)
     optim = torch.optim.Adam(det_model.parameters(), lr=config.lr, betas=(0.9, 0.999), eps=1e-8)
-    # scheduler = utils.get_noam_scheduler(config, optim)
-    init_epoch, iter = utils.load_latest_ckpt(det_model, optim, config)#, scheduler)
+    init_epoch, iter = utils.load_latest_ckpt(det_model, optim, config)
 
     # save and log
     if not os.path.exists(config.save_dir):
@@ -180,10 +179,10 @@ if __name__ == "__main__":
                 det_model.train()
 
             if iter % config.save_interval == 0:
-                utils.save_ckpt(det_model, optim, epoch, iter, config)#, scheduler)
+                utils.save_ckpt(det_model, optim, epoch, iter, config)
                 tqdm.write(f"Saved checkpoint at iter {iter}")
             
             iter += 1
     
     print(f"Training finished in {time.perf_counter() - start_time:.2f} seconds")
-    utils.save_ckpt(det_model, optim, epoch, iter, config)#, scheduler)
+    utils.save_ckpt(det_model, optim, epoch, iter, config)
