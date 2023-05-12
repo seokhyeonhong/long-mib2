@@ -180,7 +180,7 @@ class DetailTransformer(nn.Module):
     def forward(self, x, traj, batch_mask):
         B, T, D = x.shape
 
-        original_x = x.clone()
+        original_x = x.detach().clone()
         
         # mask
         x = self.encoder(torch.cat([x, traj, batch_mask], dim=-1))
