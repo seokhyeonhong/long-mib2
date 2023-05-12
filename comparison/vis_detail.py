@@ -44,11 +44,11 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    ctx_model = ContextTransformer(len(motion_mean), ctx_config).to(device)
+    ctx_model = ContextTransformer(len(motion_mean), len(traj_mean), ctx_config).to(device)
     utils.load_model(ctx_model, ctx_config)
     ctx_model.eval()
 
-    det_model = DetailTransformer(len(motion_mean), det_config).to(device)
+    det_model = DetailTransformer(len(motion_mean), len(traj_mean), det_config).to(device)
     utils.load_model(det_model, det_config)
     det_model.eval()
 

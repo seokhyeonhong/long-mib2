@@ -16,7 +16,7 @@ from pymovis.ops import rotation
 from utility import utils
 from utility.config import Config
 from utility.dataset import MotionDataset
-from vis.visapp import TwoMotionApp
+from vis.visapp import KeyframeApp
 from model.refinenet import RefineNet
 
 if __name__ == "__main__":
@@ -52,22 +52,21 @@ if __name__ == "__main__":
     with torch.no_grad():
         for GT_motion in tqdm(dataloader):
             """ 1. GT data """
-            GT_motion = GT_motion[:, :config.context_frames+config.min_transition+1]
+            # GT_motion = GT_motion[:, :80]
             B, T, D = GT_motion.shape
             GT_motion = GT_motion.to(device)
             GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
 
-            # GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
-            # GT_local_R = rotation.R6_to_R(GT_local_R6.reshape(B, T, -1, 6))
+            GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
+            GT_local_R = rotation.R6_to_R(GT_local_R6.reshape(B, T, -1, 6))
             
             """ 2. Forward """
             # normalize - forward - denormalize
-            motion = utils.get_interpolated_motion(GT_motion, config.context_frames)
-            GT_local_R6, GT_root_p = torch.split(motion, [D-7, 3], dim=-1)
-            GT_local_R = rotation.R6_to_R(GT_local_R6.reshape(B, T, -1, 6))
+            keyframes = model.get_random_keyframes(T)
+            motion = model.get_interpolated_motion(GT_motion, keyframes)
             motion = (motion - motion_mean) / motion_std
             traj   = (GT_traj - traj_mean) / traj_std
-            pred_motion, _ = model.forward(motion, traj)
+            pred_motion, pred_contact = model.forward(motion, traj, keyframes)
             pred_motion = pred_motion * motion_std + motion_mean
 
             # predicted motion
@@ -83,6 +82,11 @@ if __name__ == "__main__":
             GT_motion = Motion.from_torch(skeleton, GT_local_R, GT_root_p)
             pred_motion = Motion.from_torch(skeleton, pred_local_R, pred_root_p)
 
+            total_kfs = copy.deepcopy(keyframes)
+            for b in range(1, B):
+                for k in keyframes:
+                    total_kfs.append(k + b*T)
+
             app_manager = AppManager()
-            app = TwoMotionApp(GT_motion, pred_motion, ybot.model(), T)
+            app = KeyframeApp(GT_motion, pred_motion, ybot.model(), T, total_kfs)
             app_manager.run(app)

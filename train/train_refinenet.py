@@ -48,6 +48,7 @@ if __name__ == "__main__":
     print("Initializing model...")
     model = RefineNet(len(motion_mean), len(traj_mean), config).to(device)
     optim = torch.optim.Adam(model.parameters(), lr=config.lr)
+    # scheduler = utils.get_noam_scheduler(config, optim)
     init_epoch, iter = utils.load_latest_ckpt(model, optim, config)
     init_iter = iter
 
@@ -73,21 +74,22 @@ if __name__ == "__main__":
         for GT_motion in tqdm(dataloader, desc=f"Epoch {epoch} / {config.epochs}", leave=False):
             """ 1. GT data """
             # random transition length
-            transition = random.randint(config.min_transition, config.max_transition)
-            T = config.context_frames + transition + 1 # 1 for the target frame
+            T = random.randint(config.context_frames + config.min_transition + 1, GT_motion.shape[1])
             GT_motion = GT_motion[:, :T, :].to(device)
 
             B, T, D = GT_motion.shape
+            # GT_motion = GT_motion.to(device)
             GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
             GT_local_R6, GT_global_p = utils.get_motion(GT_motion, skeleton)
             GT_feet_v, GT_contact = utils.get_velocity_and_contact(GT_global_p, feet_ids, config.contact_vel_threshold)
             
             """ 2. Forward """
             # normalize - forward - denormalize
-            motion = utils.get_interpolated_motion(GT_motion, config.context_frames)
+            keyframes = model.get_random_keyframes(T)
+            motion = model.get_interpolated_motion(GT_motion, keyframes)
             motion = (motion - motion_mean) / motion_std
             traj   = (GT_traj - traj_mean) / traj_std
-            pred_motion, pred_contact = model.forward(motion, traj)
+            pred_motion, pred_contact = model.forward(motion, traj, keyframes)
             pred_motion = pred_motion * motion_std + motion_mean
 
             # predicted motion
@@ -97,7 +99,7 @@ if __name__ == "__main__":
             """ 3. Loss & Backward """
             # loss
             loss_pose    = config.weight_pose    * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
-            loss_vel     = config.weight_vel     * utils.recon_loss(pred_global_p[:, 1:] - pred_global_p[:, :-1], GT_global_p[:, 1:] - GT_global_p[:, :-1])
+            loss_vel     = config.weight_vel     * utils.smooth_loss(pred_global_p)
             loss_traj    = config.weight_traj    * utils.traj_loss(pred_traj, GT_traj)
             loss_contact = config.weight_contact * utils.recon_loss(pred_contact, GT_contact)
             loss_foot    = config.weight_foot    * utils.foot_loss(pred_feet_v, pred_contact.detach())
@@ -108,6 +110,7 @@ if __name__ == "__main__":
             optim.zero_grad()
             loss.backward()
             optim.step()
+            # scheduler.step()
 
             """ 4. Log """
             loss_dict["total"]   += loss.item()
@@ -118,77 +121,77 @@ if __name__ == "__main__":
             loss_dict["foot"]    += loss_foot.item()
 
             if iter % config.log_interval == 0:
-                utils.write_log(writer, loss_dict, config.log_interval, iter, train=True)
+                utils.write_log(writer, loss_dict, config.log_interval, iter, elapsed=time.perf_counter() - start_time, train=True)
                 utils.reset_log(loss_dict)
             
-            """ 5. Validation """
-            if iter % config.val_interval == 0:
-                model.eval()
-                with torch.no_grad():
-                    val_loss_dict = {
-                        "total":   0,
-                        "pose":    0,
-                        "vel":     0,
-                        "traj":    0,
-                        "contact": 0,
-                        "foot":    0,
-                    }
-                    for GT_motion in tqdm(val_dataloader, desc=f"Validation", leave=False):
-                        """ 1. GT data """
-                        # random transition length
-                        transition = random.randint(config.min_transition, config.max_transition)
-                        T = config.context_frames + transition + 1 # 1 for the target frame
-                        GT_motion = GT_motion[:, :T, :].to(device)
+            # """ 5. Validation """
+            # if iter % config.val_interval == 0:
+            #     model.eval()
+            #     with torch.no_grad():
+            #         val_loss_dict = {
+            #             "total":   0,
+            #             "pose":    0,
+            #             "vel":     0,
+            #             "traj":    0,
+            #             "contact": 0,
+            #             "foot":    0,
+            #         }
+            #         for GT_motion in tqdm(val_dataloader, desc=f"Validation", leave=False):
+            #             """ 1. GT data """
+            #             # random transition length
+            #             transition = random.randint(config.min_transition, config.max_transition)
+            #             T = config.context_frames + transition + 1 # 1 for the target frame
+            #             GT_motion = GT_motion[:, :T, :].to(device)
 
-                        B, T, D = GT_motion.shape
-                        GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
-                        GT_local_R6, GT_global_p = utils.get_motion(GT_motion, skeleton)
-                        GT_feet_v, GT_contact = utils.get_velocity_and_contact(GT_global_p, feet_ids, config.contact_vel_threshold)
+            #             B, T, D = GT_motion.shape
+            #             GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
+            #             GT_local_R6, GT_global_p = utils.get_motion(GT_motion, skeleton)
+            #             GT_feet_v, GT_contact = utils.get_velocity_and_contact(GT_global_p, feet_ids, config.contact_vel_threshold)
                         
-                        """ 2. Forward """
-                        # normalize - forward - denormalize
-                        motion = utils.get_interpolated_motion(GT_motion, config.context_frames)
-                        motion = (GT_motion - motion_mean) / motion_std
-                        traj   = (GT_traj   - traj_mean)   / traj_std
-                        pred_motion, pred_contact = model.forward(motion, traj)
-                        pred_motion = pred_motion * motion_std + motion_mean
+            #             """ 2. Forward """
+            #             # normalize - forward - denormalize
+            #             motion = utils.get_interpolated_motion(GT_motion, config.context_frames)
+            #             motion = (GT_motion - motion_mean) / motion_std
+            #             traj   = (GT_traj   - traj_mean)   / traj_std
+            #             pred_motion, pred_contact = model.forward(motion, traj)
+            #             pred_motion = pred_motion * motion_std + motion_mean
 
-                        # predicted motion
-                        pred_local_R6, pred_global_p, pred_traj = utils.get_motion_and_trajectory(pred_motion, skeleton, v_forward)
-                        pred_feet_v, _ = utils.get_velocity_and_contact(pred_global_p, feet_ids, config.contact_vel_threshold)
+            #             # predicted motion
+            #             pred_local_R6, pred_global_p, pred_traj = utils.get_motion_and_trajectory(pred_motion, skeleton, v_forward)
+            #             pred_feet_v, _ = utils.get_velocity_and_contact(pred_global_p, feet_ids, config.contact_vel_threshold)
 
-                        """ 3. Loss """
-                        # loss
-                        loss_pose    = config.weight_pose    * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
-                        loss_vel     = config.weight_vel     * utils.recon_loss(pred_global_p[:, 1:] - pred_global_p[:, :-1], GT_global_p[:, 1:] - GT_global_p[:, :-1])
-                        loss_traj    = config.weight_traj    * utils.traj_loss(pred_traj, GT_traj)
-                        loss_contact = config.weight_contact * utils.recon_loss(pred_contact, GT_contact)
-                        loss_foot    = config.weight_foot    * utils.foot_loss(pred_feet_v, pred_contact.detach())
+            #             """ 3. Loss """
+            #             # loss
+            #             loss_pose    = config.weight_pose    * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
+            #             loss_vel     = config.weight_vel     * utils.recon_loss(pred_global_p[:, 1:] - pred_global_p[:, :-1], GT_global_p[:, 1:] - GT_global_p[:, :-1])
+            #             loss_traj    = config.weight_traj    * utils.traj_loss(pred_traj, GT_traj)
+            #             loss_contact = config.weight_contact * utils.recon_loss(pred_contact, GT_contact)
+            #             loss_foot    = config.weight_foot    * utils.foot_loss(pred_feet_v, pred_contact.detach())
 
-                        loss = loss_pose + loss_vel + loss_traj + loss_contact + loss_foot
+            #             loss = loss_pose + loss_vel + loss_traj + loss_contact + loss_foot
 
-                        # log
-                        val_loss_dict["total"]    += loss.item()
-                        val_loss_dict["pose"]     += loss_pose.item()
-                        val_loss_dict["vel"]      += loss_vel.item()
-                        val_loss_dict["traj"]     += loss_traj.item()
-                        val_loss_dict["contact"]  += loss_contact.item()
-                        val_loss_dict["foot"]     += loss_foot.item()
+            #             # log
+            #             val_loss_dict["total"]    += loss.item()
+            #             val_loss_dict["pose"]     += loss_pose.item()
+            #             val_loss_dict["vel"]      += loss_vel.item()
+            #             val_loss_dict["traj"]     += loss_traj.item()
+            #             val_loss_dict["contact"]  += loss_contact.item()
+            #             val_loss_dict["foot"]     += loss_foot.item()
 
-                # write and print log
-                utils.write_log(writer, val_loss_dict, len(val_dataloader), iter, train=False)
-                utils.reset_log(val_loss_dict)
+            #     # write and print log
+            #     utils.write_log(writer, val_loss_dict, len(val_dataloader), iter, train=False)
+            #     utils.reset_log(val_loss_dict)
 
-                # train mode
-                model.train()
+            #     # train mode
+            #     model.train()
 
             """ 5. Save checkpoint """
             if iter % config.save_interval == 0:
-                utils.save_ckpt(model, optim, epoch, iter, config)
+                utils.save_ckpt(model, optim, epoch, iter, config)#, scheduler=scheduler)
                 tqdm.write(f"Saved checkpoint at iter {iter}")
             
             # update iter
             iter += 1
     
     print(f"Training finished in {time.perf_counter() - start_time:.2f} seconds")
-    utils.save_ckpt(model, optim, epoch, iter, config)
+    utils.save_ckpt(model, optim, epoch, iter, config)#, scheduler=scheduler)

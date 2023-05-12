@@ -59,7 +59,7 @@ class DatasetApp(MotionApp):
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = Config.load("configs/mpvae.json")
+    config = Config.load("configs/dataset.json")
 
     dataset = MotionDataset(train=False, config=config)
     v_forward = torch.from_numpy(config.v_forward).to(device)
@@ -73,7 +73,7 @@ if __name__ == "__main__":
         B, T, D = GT_motion.shape
         GT_motion = GT_motion.to(device)
         GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
-        interpolated_motion = get_interpolated_motion(GT_motion, config.context_frames)
+        interpolated_motion = get_interpolated_motion(GT_motion, 1)
 
         GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
         GT_local_R = rotation.R6_to_R(GT_local_R6.reshape(B, T, -1, 6))

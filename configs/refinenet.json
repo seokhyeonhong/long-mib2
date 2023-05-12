@@ -1,7 +1,7 @@
 {
     "dataset_dir": "dataset",
 
-    "window_length": 41,
+    "window_length": 101,
     "window_offset": 20,
     "fps": 30,
     "context_frames": 10,
@@ -22,11 +22,11 @@
 
     "batch_size": 64,
     "epochs": 2000,
-    "lr": 1e-4,
+    "lr": 1e-5,
+    "warmup_iters": 8000,
 
     "min_transition": 5,
     "max_transition": 30,
-    "max_future": 60,
 
     "dropout": 0.0,
     "n_layers": 6,

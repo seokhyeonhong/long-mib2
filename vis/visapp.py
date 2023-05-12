@@ -76,9 +76,9 @@ class TwoMotionApp(MotionApp):
         self.pred_motion   = pred_motion
         self.pred_model    = copy.deepcopy(ybot_model)
         self.pred_model.set_source_skeleton(self.motion.skeleton, YBOT_FBX_DICT)
-        self.pred_model.meshes[0].materials[0].albedo = glm.vec3(0.5, 0.5, 0.5)
+        # self.pred_model.meshes[0].materials[0].albedo = glm.vec3(0.5, 0.5, 0.5)
 
-        self.target_model  = copy.deepcopy(self.GT_model)
+        self.target_model  = copy.deepcopy(self.pred_model)
 
         # traj
         self.traj = Render.sphere(0.05).set_albedo([1, 0, 0])
@@ -105,10 +105,12 @@ class TwoMotionApp(MotionApp):
         # draw target
         self.target_model.set_pose_by_source(self.GT_motion.poses[(ith_motion+1)*self.frames_per_motion - 1])
         Render.model(self.target_model).set_all_color_modes(False).set_all_alphas(0.5).draw()
+        self.target_model.set_pose_by_source(self.GT_motion.poses[(ith_motion)*self.frames_per_motion])
+        Render.model(self.target_model).set_all_color_modes(False).set_all_alphas(0.5).draw()
 
     def render_text(self):
         super().render_text()
-        Render.text_on_screen(f"Motion {self.frame // self.frames_per_motion} - Frame {self.frame % self.frames_per_motion}").set_position(10, 10, 0).draw()
+        # Render.text_on_screen(f"Motion {self.frame // self.frames_per_motion} - Frame {self.frame % self.frames_per_motion}").set_position(10, 10, 0).draw()
 
     def key_callback(self, window, key, scancode, action, mods):
         super().key_callback(window, key, scancode, action, mods)
@@ -230,11 +232,14 @@ class KeyframeApp(MotionApp):
         ith_motion = self.frame // self.frames_per_motion
         ith_frame = self.frame % self.frames_per_motion
         for kf in self.keyframes:
-            if ith_motion * self.frames_per_motion <= kf < (ith_motion+1) * self.frames_per_motion:
+            if ith_motion * self.frames_per_motion <= kf < (ith_motion+1) * self.frames_per_motion - 1:
                 self.pred_model.set_pose_by_source(self.pred_motion.poses[kf])
                 Render.model(self.pred_model).set_all_alphas(0.5).draw()
 
         # target frame
+        self.GT_model.set_pose_by_source(self.GT_motion.poses[(ith_motion)*self.frames_per_motion])
+        Render.model(self.GT_model).set_all_alphas(0.5).draw()
+
         self.GT_model.set_pose_by_source(self.GT_motion.poses[(ith_motion+1)*self.frames_per_motion - 1])
         Render.model(self.GT_model).set_all_alphas(0.5).draw()
 
