@@ -89,6 +89,7 @@ if __name__ == "__main__":
             traj_batch   = (GT_traj - traj_mean) / traj_std
             with torch.no_grad():
                 pred_motion, mask = ctx_model.forward(motion_batch, traj_batch)
+                pred_motion = motion_batch * mask + pred_motion * (1 - mask)
 
             pred_motion, pred_contact = det_model.forward(pred_motion, traj_batch, mask)
 
