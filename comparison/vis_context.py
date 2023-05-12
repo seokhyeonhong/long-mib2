@@ -22,8 +22,7 @@ from model.twostage import ContextTransformer
 if __name__ == "__main__":
     # initial settings
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config     = Config.load("configs/dataset.json")
-    ctx_config = Config.load("configs/context.json")
+    config  = Config.load("configs/context_short.json")
     util.seed()
 
     # dataset
@@ -34,7 +33,7 @@ if __name__ == "__main__":
     v_forward   = torch.from_numpy(config.v_forward).to(device)
 
     # mean and std
-    stat_dset   = MotionDataset(train=True, config=ctx_config)
+    stat_dset   = MotionDataset(train=True, config=config)
     motion_mean, motion_std = stat_dset.motion_statistics()
     motion_mean, motion_std = motion_mean.to(device), motion_std.to(device)
 
@@ -43,8 +42,8 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    ctx_model = ContextTransformer(len(motion_mean), len(traj_mean), ctx_config).to(device)
-    utils.load_model(ctx_model, ctx_config)
+    ctx_model = ContextTransformer(len(motion_mean), len(traj_mean), config).to(device)
+    utils.load_model(ctx_model, config)
     ctx_model.eval()
 
     # character
