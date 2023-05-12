@@ -99,7 +99,7 @@ if __name__ == "__main__":
             """ 3. Loss & Backward """
             # loss
             loss_pose    = config.weight_pose    * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
-            loss_vel     = config.weight_vel     * utils.smooth_loss(pred_global_p)
+            loss_vel     = config.weight_vel     * utils.recon_loss(pred_global_p[:, 1:] - pred_global_p[:, :-1], GT_global_p[:, 1:] - GT_global_p[:, :-1])
             loss_traj    = config.weight_traj    * utils.traj_loss(pred_traj, GT_traj)
             loss_contact = config.weight_contact * utils.recon_loss(pred_contact, GT_contact)
             loss_foot    = config.weight_foot    * utils.foot_loss(pred_feet_v, pred_contact.detach())

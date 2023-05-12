@@ -120,8 +120,9 @@ class ContextTransformer(nn.Module):
         
         x = self.decoder(x)
 
-        # recover masked frames
-        x = batch_mask * original_x + (1 - batch_mask) * x
+        # recover the constrained frames from the original input
+        x[:, :self.config.context_frames] = original_x[:, :self.config.context_frames]
+        x[:, -1] = original_x[:, -1]
 
         return x, batch_mask
 
@@ -200,7 +201,6 @@ class DetailTransformer(nn.Module):
         x = self.decoder(x)
         motion, contact = torch.split(x, [self.d_motion, 4], dim=-1)
 
-        motion = batch_mask * original_x + (1 - batch_mask) * motion
         contact = torch.sigmoid(contact)
 
         return motion, contact

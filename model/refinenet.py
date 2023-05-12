@@ -138,9 +138,6 @@ class RefineNet(nn.Module):
     def forward(self, interp_motion, traj, keyframes):
         B, T, D = interp_motion.shape
 
-        # original motion
-        original_motion = interp_motion.clone()
-
         # mask
         batch_mask = self.get_mask_by_keyframe(interp_motion, keyframes)
         x = self.motion_encoder(torch.cat([interp_motion, traj, batch_mask], dim=-1))
@@ -167,7 +164,6 @@ class RefineNet(nn.Module):
 
         # output
         motion, contact = torch.split(x, [self.d_motion, 4], dim=-1)
-        motion = original_motion * batch_mask + motion * (1 - batch_mask)
         contact = torch.sigmoid(contact)
         
         return motion, contact
