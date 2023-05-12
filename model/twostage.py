@@ -199,11 +199,13 @@ class DetailTransformer(nn.Module):
             x = self.layer_norm(x)
         
         x = self.decoder(x)
-        motion, contact = torch.split(x, [self.d_motion, 4], dim=-1)
-        contact = torch.sigmoid(contact)
 
         # recover the constrained frames from the original input
-        motion[:, :self.config.context_frames] = original_x[:, :self.config.context_frames]
-        motion[:, -1] = original_x[:, -1]
+        x[:, :self.config.context_frames, :self.d_motion] = original_x[:, :self.config.context_frames]
+        x[:, -1, :self.d_motion] = original_x[:, -1]
+
+        # split motion and contact
+        motion, contact = torch.split(x, [self.d_motion, 4], dim=-1)
+        contact = torch.sigmoid(contact)
 
         return motion, contact
