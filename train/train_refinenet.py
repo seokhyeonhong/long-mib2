@@ -47,7 +47,7 @@ if __name__ == "__main__":
     # model
     print("Initializing model...")
     model = RefineNet(len(motion_mean), len(traj_mean), config).to(device)
-    optim = torch.optim.Adam(model.parameters(), lr=config.d_model**(-0.5))
+    optim = torch.optim.Adam(model.parameters(), lr=config.lr)
     init_epoch, iter = utils.load_latest_ckpt(model, optim, config)
     init_iter = iter
 
