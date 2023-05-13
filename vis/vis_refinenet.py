@@ -36,7 +36,6 @@ if __name__ == "__main__":
 
     traj_mean, traj_std = dataset.traj_statistics()
     traj_mean, traj_std = traj_mean.to(device), traj_std.to(device)
-    breakpoint()
     
     dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 

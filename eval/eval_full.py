@@ -10,17 +10,18 @@ from pymovis.ops import motionops, rotation, mathops
 from utility.dataset import MotionDataset
 from utility.config import Config
 from utility import benchmark, utils
+from model.keyframenet import KeyframeNet
 from model.refinenet import RefineNet
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config     = Config.load("configs/dataset.json")
+    kf_config  = Config.load("configs/keyframenet.json")
     ref_config = Config.load("configs/refinenet.json")
 
     # dataset - test
     print("Loading dataset...")
-    dataset    = MotionDataset(train=False, config=config)
-    dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False)
+    dataset    = MotionDataset(train=False, config=ref_config)
+    dataloader = DataLoader(dataset, batch_size=ref_config.batch_size, shuffle=False)
 
     test_mean, test_std = dataset.test_statistics()
     test_mean, test_std = test_mean.to(device), test_std.to(device)
@@ -36,17 +37,20 @@ if __name__ == "__main__":
     traj_mean, traj_std = ref_dataset.traj_statistics()
     traj_mean, traj_std = traj_mean.to(device), traj_std.to(device)
 
-
     # model
     print("Initializing model...")
-    model = RefineNet(len(motion_mean), len(traj_mean), ref_config).to(device)
-    utils.load_model(model, ref_config)
-    model.eval()
+    kf_net = KeyframeNet(len(motion_mean), len(traj_mean), kf_config).to(device)
+    utils.load_model(kf_net, kf_config)
+    kf_net.eval()
+
+    ref_net = RefineNet(len(motion_mean), len(traj_mean), ref_config).to(device)
+    utils.load_model(ref_net, ref_config)
+    ref_net.eval()
 
     # evaluation
     transition = [5, 15, 30, 45]
     for t in transition:
-        total_len = config.context_frames + t + 1
+        total_len = ref_config.context_frames + t + 1
             
         GT_global_ps, GT_global_Qs, GT_trajs = [], [], []
         pred_global_ps, pred_global_Qs, pred_trajs = [], [], []
@@ -68,13 +72,40 @@ if __name__ == "__main__":
                 GT_global_Qs.append(GT_global_Q)
                 GT_trajs.append(GT_traj)
 
-                """ 2. Forward """
+                """ 2. Forward KeyframeNet """
                 # normalize - forward - denormalize
-                motion = utils.get_interpolated_motion(GT_motion, config.context_frames)
-                motion = (motion - motion_mean) / motion_std
-                traj   = (GT_traj - traj_mean) / traj_std
-                pred_motion, _ = model.forward(motion, traj)
-                pred_motion = pred_motion * motion_std + motion_mean
+                motion = (GT_motion - motion_mean) / motion_std
+                traj   = (GT_traj   - traj_mean)   / traj_std
+                kf_motion, pred_score = kf_net.forward(motion, traj)
+                kf_motion = kf_motion * motion_std + motion_mean
+
+                """ 3. Forward RefineNet """
+                pred_motions = []
+                for b in range(B):
+                    # adaptive keyframe selection
+                    keyframes = [ref_config.context_frames - 1]
+                    transition_start = ref_config.context_frames
+                    while transition_start < T:
+                        transition_end = min(transition_start + 30, T-1)
+                        if transition_end == T-1:
+                            keyframes.append(transition_end)
+                            break
+
+                        # top keyframe
+                        top_keyframe = torch.topk(pred_score[b:b+1, transition_start+ref_config.min_transition:transition_end+1], 1, dim=1).indices + transition_start + ref_config.min_transition
+                        top_keyframe = top_keyframe.item()
+                        keyframes.append(top_keyframe)
+                        transition_start = top_keyframe + 1
+                    
+                    # forward
+                    motion = ref_net.get_interpolated_motion(kf_motion[b:b+1], keyframes)
+                    motion = (motion - motion_mean) / motion_std
+                    pred_motion, pred_contact = ref_net.forward(motion, traj[b:b+1], keyframes)
+                    pred_motion = pred_motion * motion_std + motion_mean
+                    pred_motions.append(pred_motion)
+                
+                # concat predictions
+                pred_motion = torch.cat(pred_motions, dim=0)
 
                 # trajectory
                 pred_traj = utils.get_trajectory(pred_motion, v_forward)
