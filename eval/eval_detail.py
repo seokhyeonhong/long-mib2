@@ -14,14 +14,13 @@ from model.twostage import ContextTransformer, DetailTransformer
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config     = Config.load("configs/dataset.json")
     ctx_config = Config.load("configs/context.json")
     det_config = Config.load("configs/detail.json")
 
     # dataset - test
     print("Loading dataset...")
-    dataset    = MotionDataset(train=False, config=config)
-    dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=False)
+    dataset    = MotionDataset(train=False, config=ctx_config)
+    dataloader = DataLoader(dataset, batch_size=ctx_config.batch_size, shuffle=False)
 
     test_mean, test_std = dataset.test_statistics()
     test_mean, test_std = test_mean.to(device), test_std.to(device)
@@ -37,7 +36,6 @@ if __name__ == "__main__":
     traj_mean, traj_std = ctx_dataset.traj_statistics()
     traj_mean, traj_std = traj_mean.to(device), traj_std.to(device)
 
-
     # model
     print("Initializing model...")
     ctx_model = ContextTransformer(len(motion_mean), len(traj_mean), ctx_config).to(device)
@@ -49,9 +47,9 @@ if __name__ == "__main__":
     det_model.eval()
 
     # evaluation
-    transition = [5, 15, 30, 45]
+    transition = [5, 15, 30, 45, 60, 90]
     for t in transition:
-        total_len = config.context_frames + t + 1
+        total_len = ctx_config.context_frames + t + 1
             
         GT_global_ps, GT_global_Qs, GT_trajs = [], [], []
         pred_global_ps, pred_global_Qs, pred_trajs = [], [], []
@@ -120,4 +118,4 @@ if __name__ == "__main__":
             l2t = torch.mean(torch.norm(GT_traj - pred_traj, dim=-1)).item()
 
             print("======Transition: {}======".format(t))
-            print("L2P: {:.4f}, L2Q: {:.4f}, NPSS: {:.4f}, L2T: {:.4f}".format(l2p, l2q, npss, l2t))
+            print("L2P: {:.4f}, L2Q: {:.4f}, L2T: {:.4f}, NPSS: {:.4f}".format(l2p, l2q, l2t, npss))

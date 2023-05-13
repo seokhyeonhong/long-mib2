@@ -22,17 +22,16 @@ from model.twostage import ContextTransformer, DetailTransformer
 if __name__ == "__main__":
     # initial settings
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config     = Config.load("configs/dataset.json")
     ctx_config = Config.load("configs/context.json")
     det_config = Config.load("configs/detail.json")
     util.seed()
 
     # dataset
     print("Loading dataset...")
-    dataset     = MotionDataset(train=False, config=config)
-    dataloader  = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
+    dataset     = MotionDataset(train=False, config=ctx_config)
+    dataloader  = DataLoader(dataset, batch_size=ctx_config.batch_size, shuffle=True)
     skeleton    = dataset.skeleton
-    v_forward   = torch.from_numpy(config.v_forward).to(device)
+    v_forward   = torch.from_numpy(ctx_config.v_forward).to(device)
 
     # mean and std
     stat_dset   = MotionDataset(train=True, config=ctx_config)
@@ -59,12 +58,12 @@ if __name__ == "__main__":
     with torch.no_grad():
         for GT_motion in tqdm(dataloader):
             """ 1. GT motion data """
-            T = config.context_frames + config.max_transition + 1
+            T = ctx_config.context_frames + ctx_config.max_transition + 1
             GT_motion = GT_motion[:, :T].to(device)
             B, T, D = GT_motion.shape
 
             GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
-            GT_motion[:, -1, :-3] = GT_motion[:, config.context_frames-1, :-3]
+            GT_motion[:, -1, :-3] = GT_motion[:, ctx_config.context_frames-1, :-3]
             
             # Optional: interpolate motion
             # GT_motion = utils.get_interpolated_motion(GT_motion, config.context_frames)
@@ -73,7 +72,7 @@ if __name__ == "__main__":
             GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
             GT_local_R = rotation.R6_to_R(GT_local_R6.reshape(B, T, -1, 6))
 
-            """ 2. Train KF-VAE """
+            """ 2. Forward """
             # forward
             motion = (GT_motion - motion_mean) / motion_std
             traj   = (GT_traj - traj_mean) / traj_std
@@ -85,6 +84,7 @@ if __name__ == "__main__":
             pred_local_R6, pred_root_p = torch.split(pred_motion, [D-7, 3], dim=-1)
             pred_local_R = rotation.R6_to_R(pred_local_R6.reshape(B, T, -1, 6))
 
+            """ 3. Visualization """
             # animation
             GT_local_R = GT_local_R.reshape(B*T, -1, 3, 3)
             GT_root_p = GT_root_p.reshape(B*T, -1)

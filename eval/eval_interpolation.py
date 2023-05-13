@@ -26,7 +26,7 @@ if __name__ == "__main__":
     test_mean, test_std = test_mean.to(device), test_std.to(device)
 
     # evaluation
-    transition = [5, 15, 30, 45]
+    transition = [5, 15, 30, 45, 60, 90]
     for t in transition:
         total_len = config.context_frames + t + 1
         eval_dict = {

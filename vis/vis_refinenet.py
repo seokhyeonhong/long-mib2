@@ -36,6 +36,7 @@ if __name__ == "__main__":
 
     traj_mean, traj_std = dataset.traj_statistics()
     traj_mean, traj_std = traj_mean.to(device), traj_std.to(device)
+    breakpoint()
     
     dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 
@@ -52,13 +53,14 @@ if __name__ == "__main__":
     with torch.no_grad():
         for GT_motion in tqdm(dataloader):
             """ 1. GT data """
-            GT_motion = GT_motion[:, :80]
+            # GT_motion = GT_motion[:, :80]
             B, T, D = GT_motion.shape
             GT_motion = GT_motion.to(device)
             GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
 
-            GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
+            GT_local_R6, GT_global_p = utils.get_motion(GT_motion, skeleton)
             GT_local_R = rotation.R6_to_R(GT_local_R6.reshape(B, T, -1, 6))
+            GT_root_p = GT_global_p[:, :, 0]
             
             """ 2. Forward """
             # normalize - forward - denormalize
@@ -70,8 +72,9 @@ if __name__ == "__main__":
             pred_motion = pred_motion * motion_std + motion_mean
 
             # predicted motion
-            pred_local_R6, pred_root_p = torch.split(pred_motion, [D-7, 3], dim=-1)
+            pred_local_R6, pred_global_p, pred_traj = utils.get_motion_and_trajectory(pred_motion, skeleton, v_forward)
             pred_local_R = rotation.R6_to_R(pred_local_R6.reshape(B, T, -1, 6))
+            pred_root_p = pred_global_p[:, :, 0]
 
             """ 3. Animation """
             GT_local_R = GT_local_R.reshape(B*T, -1, 3, 3)
@@ -88,5 +91,6 @@ if __name__ == "__main__":
                     total_kfs.append(k + b*T)
 
             app_manager = AppManager()
+            print(utils.recon_loss(pred_local_R6.reshape(B, T, -1, 6), GT_local_R6.reshape(B, T, -1, 6)) + utils.recon_loss(pred_global_p.reshape(B, T, -1, 3), GT_global_p.reshape(B, T, -1, 3)))
             app = KeyframeApp(GT_motion, pred_motion, ybot.model(), T, total_kfs)
             app_manager.run(app)
