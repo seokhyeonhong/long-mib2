@@ -10,11 +10,7 @@ def get_mask(batch, context_frames):
     batch_mask = torch.ones(B, T, 1, dtype=batch.dtype, device=batch.device)
     batch_mask[:, context_frames:-1, :] = 0
 
-    # True for unknown frames, False for known frames
-    attn_mask = torch.zeros(T, T, dtype=torch.bool, device=batch.device)
-    attn_mask[:, context_frames:-1] = True
-   
-    return batch_mask, attn_mask
+    return batch_mask
 
 def get_keyframe_relative_position(window_length, context_frames):
     position = torch.arange(window_length, dtype=torch.float32)
@@ -45,15 +41,7 @@ class KeyframeNet(nn.Module):
         
         # encoders
         self.motion_encoder = nn.Sequential(
-            nn.Linear(self.d_motion + 1, self.d_model), # (motion, mask)
-            nn.PReLU(),
-            nn.Dropout(self.dropout),
-            nn.Linear(self.d_model, self.d_model),
-            nn.PReLU(),
-            nn.Dropout(self.dropout),
-        )
-        self.traj_encoder = nn.Sequential(
-            nn.Linear(self.d_traj, self.d_model), # (motion, mask)
+            nn.Linear(self.d_motion + self.d_traj + 1, self.d_model), # (motion, mask)
             nn.PReLU(),
             nn.Dropout(self.dropout),
             nn.Linear(self.d_model, self.d_model),
@@ -78,12 +66,10 @@ class KeyframeNet(nn.Module):
         # Transformer layers
         self.layer_norm   = nn.LayerNorm(self.d_model)
         self.attn_layers  = nn.ModuleList()
-        self.cross_layers = nn.ModuleList()
         self.pffn_layers  = nn.ModuleList()
         
         for _ in range(self.n_layers):
             self.attn_layers.append(MultiHeadAttention(self.d_model, self.d_head, self.n_heads, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
-            self.cross_layers.append(MultiHeadAttention(self.d_model, self.d_head, self.n_heads, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
             self.pffn_layers.append(PoswiseFeedForwardNet(self.d_model, self.d_ff, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
 
         # decoder
@@ -100,24 +86,22 @@ class KeyframeNet(nn.Module):
         original_motion = motion.clone()
         
         # mask
-        batch_mask, atten_mask = get_mask(motion, self.config.context_frames)
-        x = self.motion_encoder(torch.cat([motion * batch_mask, batch_mask], dim=-1))
-        context = self.traj_encoder(traj)
+        batch_mask = get_mask(motion, self.config.context_frames)
+        masked_motion = motion * batch_mask
+        x = self.motion_encoder(torch.cat([masked_motion, traj, batch_mask], dim=-1))
 
         # add keyframe positional embedding
         keyframe_pos = get_keyframe_relative_position(T, self.config.context_frames).to(x.device)
         keyframe_pos = self.keyframe_pos_encoder(keyframe_pos)
         x = x + keyframe_pos
-        context = context + keyframe_pos
-
+        
         # relative distance
         lookup_table = torch.arange(-T+1, T, dtype=torch.float32).unsqueeze(-1).to(x.device) # (2T-1, 1)
         lookup_table = self.relative_pos_encoder(lookup_table) # (2T-1, d_head)
 
         # Transformer encoder layers
         for i in range(self.n_layers):
-            x = self.attn_layers[i](x, x, lookup_table=lookup_table, mask=atten_mask)
-            x = self.cross_layers[i](x, context, lookup_table=lookup_table)
+            x = self.attn_layers[i](x, x, lookup_table=lookup_table)
             x = self.pffn_layers[i](x)
 
         # decoder
@@ -129,7 +113,7 @@ class KeyframeNet(nn.Module):
         # recover original motion
         x[:, :self.config.context_frames, :self.d_motion] = original_motion[:, :self.config.context_frames]
         x[:, -1] = original_motion[:, -1]
-        
+
         # output
         motion, kf_score = torch.split(x, [self.d_motion, 1], dim=-1)
         kf_score = torch.sigmoid(kf_score)
