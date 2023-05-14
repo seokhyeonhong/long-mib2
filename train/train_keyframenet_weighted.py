@@ -126,6 +126,8 @@ if __name__ == "__main__":
                         GT_motion, GT_traj, GT_score = torch.split(GT_keyframe, [D-5, 4, 1], dim=-1)
 
                         GT_local_R6, GT_global_p = utils.get_motion(GT_motion, skeleton)
+                        GT_local_R6 = GT_local_R6.reshape(B, T, -1)
+                        GT_global_p = GT_global_p.reshape(B, T, -1)
                         
                         """ 2. Forward """
                         # normalize - forward - denormalize
@@ -136,12 +138,14 @@ if __name__ == "__main__":
 
                         # predicted motion
                         pred_local_R6, pred_global_p, pred_traj = utils.get_motion_and_trajectory(pred_motion, skeleton, v_forward)
+                        pred_local_R6 = pred_local_R6.reshape(B, T, -1)
+                        pred_global_p = pred_global_p.reshape(B, T, -1)
 
                         """ 3. Loss """
                         # loss
-                        loss_pose  = config.weight_pose * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
+                        loss_pose  = config.weight_pose * (utils.recon_loss(pred_local_R6 * GT_score, GT_local_R6 * GT_score) + utils.recon_loss(pred_global_p * GT_score, GT_global_p * GT_score))
                         loss_score = config.weight_score * utils.recon_loss(pred_score, GT_score)
-                        loss_traj  = config.weight_traj * (utils.traj_loss(pred_traj, GT_traj))
+                        loss_traj  = config.weight_traj * (utils.traj_loss(pred_traj * GT_score, GT_traj * GT_score))
 
                         loss = loss_pose + loss_score + loss_traj
 

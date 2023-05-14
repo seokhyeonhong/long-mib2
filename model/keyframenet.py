@@ -112,7 +112,7 @@ class KeyframeNet(nn.Module):
         
         # recover original motion
         x[:, :self.config.context_frames, :self.d_motion] = original_motion[:, :self.config.context_frames]
-        x[:, -1] = original_motion[:, -1]
+        x[:, -1, :self.d_motion] = original_motion[:, -1]
 
         # output
         motion, kf_score = torch.split(x, [self.d_motion, 1], dim=-1)
