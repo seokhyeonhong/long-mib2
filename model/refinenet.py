@@ -223,7 +223,7 @@ class RefineNetLocal(nn.Module):
         self.pffn_layers  = nn.ModuleList()
         
         for _ in range(self.n_layers):
-            self.attn_layers.append(LocalMultiHeadAttention(self.d_model, self.d_head, self.n_heads, self.receptive_size, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
+            self.attn_layers.append(LocalMultiHeadAttention(self.d_model, self.d_head, self.n_heads, self.config.receptive_size, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
             self.pffn_layers.append(PoswiseFeedForwardNet(self.d_model, self.d_ff, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
 
         # decoder
