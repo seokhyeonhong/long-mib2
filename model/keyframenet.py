@@ -126,9 +126,12 @@ class KeyframeNet(nn.Module):
         
         x = self.decoder(x)
         
+        # recover original motion
+        x[:, :self.config.context_frames, :self.d_motion] = original_motion[:, :self.config.context_frames]
+        x[:, -1] = original_motion[:, -1]
+        
         # output
         motion, kf_score = torch.split(x, [self.d_motion, 1], dim=-1)
-        motion = original_motion * batch_mask + motion * (1 - batch_mask)
         kf_score = torch.sigmoid(kf_score)
 
         return motion, kf_score
