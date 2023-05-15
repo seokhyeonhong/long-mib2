@@ -21,7 +21,7 @@ from utility import utils
 if __name__ == "__main__":
     # initial settings
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = Config.load("configs/refinenet_nope.json")
+    config = Config.load("configs/refinenet_local_nope.json")
     util.seed()
 
     # dataset
@@ -46,7 +46,7 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = RefineNet(len(motion_mean), len(traj_mean), len(feet_ids), config, local_attn=False, use_pe=False).to(device)
+    model = RefineNet(len(motion_mean), len(traj_mean), len(feet_ids), config, local_attn=True, use_pe=False).to(device)
     optim = torch.optim.Adam(model.parameters(), lr=config.lr)
     init_epoch, iter = utils.load_latest_ckpt(model, optim, config)
     init_iter = iter
