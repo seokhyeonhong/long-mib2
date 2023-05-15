@@ -46,7 +46,7 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = RefineNet(len(motion_mean), len(traj_mean), config).to(device)
+    model = RefineNet(len(motion_mean), len(traj_mean), config, local_attn=False).to(device)
     optim = torch.optim.Adam(model.parameters(), lr=config.lr)
     init_epoch, iter = utils.load_latest_ckpt(model, optim, config)
     init_iter = iter
@@ -86,6 +86,7 @@ if __name__ == "__main__":
             keyframes = model.get_random_keyframes(T)
             motion = model.get_interpolated_motion(GT_motion, keyframes)
             motion = (motion - motion_mean) / motion_std
+            motion += torch.randn_like(motion) * 1e-2
             traj   = (GT_traj - traj_mean) / traj_std
             pred_motion, pred_contact = model.forward(motion, traj, keyframes)
             pred_motion = pred_motion * motion_std + motion_mean

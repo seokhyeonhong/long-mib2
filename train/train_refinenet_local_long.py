@@ -15,7 +15,7 @@ from pymovis.utils import util
 
 from utility.dataset import MotionDataset
 from utility.config import Config
-from model.refinenet import RefineNetLocal
+from model.refinenet import RefineNet
 from utility import utils
 
 if __name__ == "__main__":
@@ -46,7 +46,7 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = RefineNetLocal(len(motion_mean), len(traj_mean), config).to(device)
+    model = RefineNet(len(motion_mean), len(traj_mean), config, local_attn=True).to(device)
     optim = torch.optim.Adam(model.parameters(), lr=config.lr)
     init_epoch, iter = utils.load_latest_ckpt(model, optim, config)
     init_iter = iter

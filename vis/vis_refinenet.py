@@ -41,7 +41,7 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = RefineNet(len(motion_mean), len(traj_mean), config).to(device)
+    model = RefineNet(len(motion_mean), len(traj_mean), config, local_attn=False).to(device)
     utils.load_model(model, config)
     model.eval()
 
@@ -90,6 +90,5 @@ if __name__ == "__main__":
                     total_kfs.append(k + b*T)
 
             app_manager = AppManager()
-            print(utils.recon_loss(pred_local_R6.reshape(B, T, -1, 6), GT_local_R6.reshape(B, T, -1, 6)) + utils.recon_loss(pred_global_p.reshape(B, T, -1, 3), GT_global_p.reshape(B, T, -1, 3)))
             app = KeyframeApp(GT_motion, pred_motion, ybot.model(), T, total_kfs)
             app_manager.run(app)
