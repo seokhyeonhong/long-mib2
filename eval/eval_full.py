@@ -15,7 +15,7 @@ from model.refinenet import RefineNet
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    kf_config  = Config.load("configs/keyframenet.json")
+    kf_config  = Config.load("configs/keyframenet_weighted.json")
     ref_config = Config.load("configs/refinenet.json")
 
     # dataset - test
@@ -37,18 +37,22 @@ if __name__ == "__main__":
     traj_mean, traj_std = ref_dataset.traj_statistics()
     traj_mean, traj_std = traj_mean.to(device), traj_std.to(device)
 
+    feet_ids = []
+    for name in kf_config.contact_joint_names:
+        feet_ids.append(skeleton.idx_by_name[name])
+
     # model
     print("Initializing model...")
-    kf_net = KeyframeNet(len(motion_mean), len(traj_mean), kf_config).to(device)
+    kf_net = KeyframeNet(len(motion_mean), len(traj_mean), len(feet_ids), kf_config).to(device)
     utils.load_model(kf_net, kf_config)
     kf_net.eval()
 
-    ref_net = RefineNet(len(motion_mean), len(traj_mean), ref_config).to(device)
+    ref_net = RefineNet(len(motion_mean), len(traj_mean), ref_config, local_attn=False).to(device)
     utils.load_model(ref_net, ref_config)
     ref_net.eval()
 
     # evaluation
-    transition = [5, 15, 30, 45]
+    transition = [5, 15, 30, 45, 60, 90]
     for t in transition:
         total_len = ref_config.context_frames + t + 1
             
@@ -76,7 +80,7 @@ if __name__ == "__main__":
                 # normalize - forward - denormalize
                 motion = (GT_motion - motion_mean) / motion_std
                 traj   = (GT_traj   - traj_mean)   / traj_std
-                kf_motion, pred_score = kf_net.forward(motion, traj)
+                kf_motion, pred_score, _ = kf_net.forward(motion, traj)
                 kf_motion = kf_motion * motion_std + motion_mean
 
                 """ 3. Forward RefineNet """

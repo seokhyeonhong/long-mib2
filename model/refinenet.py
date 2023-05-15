@@ -24,12 +24,14 @@ def get_keyframe_relative_position(window_length, context_frames):
     return p_kf
 
 class RefineNet(nn.Module):
-    def __init__(self, d_motion, d_traj, config, local_attn=False):
+    def __init__(self, d_motion, d_traj, d_contact, config, local_attn=False, use_pe=True):
         super(RefineNet, self).__init__()
         self.d_motion = d_motion
         self.d_traj = d_traj
+        self.d_contact = d_contact
         self.config = config
         self.local_attn = local_attn
+        self.use_pe = use_pe
 
         self.d_model        = config.d_model
         self.n_layers       = config.n_layers
@@ -51,13 +53,14 @@ class RefineNet(nn.Module):
             nn.PReLU(),
             nn.Dropout(self.dropout),
         )
-        self.keyframe_pos_encoder = nn.Sequential(
-            nn.Linear(2, self.d_model),
-            nn.PReLU(),
-            nn.Dropout(self.dropout),
-            nn.Linear(self.d_model, self.d_model),
-            nn.Dropout(self.dropout),
-        )
+        if self.use_pe:
+            self.keyframe_pos_encoder = nn.Sequential(
+                nn.Linear(2, self.d_model),
+                nn.PReLU(),
+                nn.Dropout(self.dropout),
+                nn.Linear(self.d_model, self.d_model),
+                nn.Dropout(self.dropout),
+            )
         self.relative_pos_encoder = nn.Sequential(
             nn.Linear(1, self.d_model),
             nn.PReLU(),
@@ -82,7 +85,7 @@ class RefineNet(nn.Module):
         self.decoder = nn.Sequential(
             nn.Linear(self.d_model, self.d_model),
             nn.PReLU(),
-            nn.Linear(self.d_model, self.d_motion + 4),
+            nn.Linear(self.d_model, self.d_motion + self.d_contact),
         )
     
     def get_random_keyframes(self, t_total):
@@ -150,9 +153,10 @@ class RefineNet(nn.Module):
         x = self.motion_encoder(torch.cat([interp_motion, traj, batch_mask], dim=-1))
 
         # add keyframe positional embedding
-        keyframe_pos = get_keyframe_relative_position(T, self.config.context_frames).to(x.device)
-        keyframe_pos = self.keyframe_pos_encoder(keyframe_pos)
-        x = x + keyframe_pos
+        if self.use_pe:
+            keyframe_pos = get_keyframe_relative_position(T, self.config.context_frames).to(x.device)
+            keyframe_pos = self.keyframe_pos_encoder(keyframe_pos)
+            x = x + keyframe_pos
 
         # relative distance
         lookup_table = torch.arange(-T+1, T, dtype=torch.float32).unsqueeze(-1).to(x.device) # (2T-1, 1)
@@ -174,7 +178,7 @@ class RefineNet(nn.Module):
         x[:, -1, :self.d_motion] = original_x[:, -1]
 
         # output
-        motion, contact = torch.split(x, [self.d_motion, 4], dim=-1)
+        motion, contact = torch.split(x, [self.d_motion, self.d_contact], dim=-1)
         contact = torch.sigmoid(contact)
         
         return motion, contact

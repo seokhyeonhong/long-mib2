@@ -18,7 +18,7 @@ from utility.config import Config
 from utility.dataset import MotionDataset
 from vis.visapp import KeyframeApp
 from model.keyframenet import KeyframeNet
-from model.refinenet import RefineNetLocal, RefineNet
+from model.refinenet import RefineNet
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     utils.load_model(kf_net, kf_config)
     kf_net.eval()
 
-    ref_net = RefineNet(len(motion_mean), len(traj_mean), ref_config).to(device)
+    ref_net = RefineNet(len(motion_mean), len(traj_mean), len(feet_ids), ref_config, local_attn=False).to(device)
     # ref_net = RefineNetLocal(len(motion_mean), len(traj_mean), ref_config).to(device)
     utils.load_model(ref_net, ref_config)
     ref_net.eval()
