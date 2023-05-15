@@ -12,10 +12,10 @@
     "contact_joint_names": ["LeftFoot", "LeftToeBase", "RightFoot", "RightToeBase"],
     "contact_vel_threshold": 2e-4,
 
-    "log_dir": "log/KeyframeNet",
+    "log_dir": "log/RefineNet-long",
     "log_interval": 100,
 
-    "save_dir": "save/fff",
+    "save_dir": "save/RefineNet-long",
     "save_interval": 10000,
 
     "val_interval": 1000,
@@ -23,10 +23,10 @@
     "batch_size": 64,
     "epochs": 2000,
     "lr": 1e-5,
+    "warmup_iters": 8000,
 
     "min_transition": 5,
     "max_transition": 30,
-    "max_future": 60,
 
     "dropout": 0.0,
     "n_layers": 6,
@@ -36,6 +36,8 @@
     "pre_layernorm": true,
 
     "weight_pose": 1.0,
-    "weight_score": 1.0,
-    "weight_traj": 0.5
+    "weight_vel": 0.5,
+    "weight_traj": 0.5,
+    "weight_contact": 0.1,
+    "weight_foot": 0.1
 }

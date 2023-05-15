@@ -86,7 +86,7 @@ if __name__ == "__main__":
                     keyframes = [ref_config.context_frames - 1]
                     transition_start = ref_config.context_frames
                     while transition_start < T:
-                        transition_end = min(transition_start + 30, T-1)
+                        transition_end = min(transition_start + ref_config.max_transition, T-1)
                         if transition_end == T-1:
                             keyframes.append(transition_end)
                             break

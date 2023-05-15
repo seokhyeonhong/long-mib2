@@ -37,5 +37,7 @@
 
     "weight_pose": 1.0,
     "weight_score": 1.0,
-    "weight_traj": 0.5
+    "weight_traj": 0.5,
+    "weight_contact": 0.1,
+    "weight_foot": 0.1
 }

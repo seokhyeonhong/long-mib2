@@ -13,21 +13,21 @@ from tqdm import tqdm
 
 from pymovis.utils import util
 
-from utility.dataset import KeyframeDataset
+from utility.dataset import MotionDataset
 from utility.config import Config
-from model.keyframenet import KeyframeNet
+from model.refinenet import RefineNet
 from utility import utils
 
 if __name__ == "__main__":
     # initial settings
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = Config.load("configs/keyframenet_weighted_modified.json")
+    config = Config.load("configs/refinenet_long.json")
     util.seed()
 
     # dataset
     print("Loading dataset...")
-    dataset     = KeyframeDataset(train=True,  config=config)
-    val_dataset = KeyframeDataset(train=False, config=config)
+    dataset     = MotionDataset(train=True,  config=config)
+    val_dataset = MotionDataset(train=False, config=config)
     skeleton    = dataset.skeleton
     v_forward   = torch.from_numpy(config.v_forward).to(device)
 
@@ -46,7 +46,7 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = KeyframeNet(len(motion_mean), len(traj_mean), len(feet_ids), config).to(device)
+    model = RefineNet(len(motion_mean), len(traj_mean), config).to(device)
     optim = torch.optim.Adam(model.parameters(), lr=config.lr)
     init_epoch, iter = utils.load_latest_ckpt(model, optim, config)
     init_iter = iter
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     loss_dict = {
         "total":   0,
         "pose":    0,
-        "score":   0,
+        "vel":     0,
         "traj":    0,
         "contact": 0,
         "foot":    0,
@@ -70,39 +70,39 @@ if __name__ == "__main__":
     # training
     start_time = time.perf_counter()
     for epoch in range(init_epoch, config.epochs+1):
-        for GT_keyframe in tqdm(dataloader, desc=f"Epoch {epoch} / {config.epochs}", leave=False):
+        for GT_motion in tqdm(dataloader, desc=f"Epoch {epoch} / {config.epochs}", leave=False):
             """ 1. GT data """
-            B, T, D = GT_keyframe.shape
-            GT_keyframe = GT_keyframe.to(device)
-            GT_motion, GT_traj, GT_score = torch.split(GT_keyframe, [D-5, 4, 1], dim=-1)
+            # random transition length
+            # T = random.randint(config.context_frames + config.min_transition + 1, GT_motion.shape[1])
+            B, T, D = GT_motion.shape
+            GT_motion = GT_motion.to(device)
 
+            GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
             GT_local_R6, GT_global_p = utils.get_motion(GT_motion, skeleton)
             GT_feet_v, GT_contact = utils.get_velocity_and_contact(GT_global_p, feet_ids, config.contact_vel_threshold)
-            GT_local_R6 = GT_local_R6.reshape(B, T, -1)
-            GT_global_p = GT_global_p.reshape(B, T, -1)
             
             """ 2. Forward """
             # normalize - forward - denormalize
-            motion = (GT_motion - motion_mean) / motion_std
-            traj   = (GT_traj   - traj_mean)   / traj_std
-            pred_motion, pred_score, pred_contact = model.forward(motion, traj)
+            keyframes = model.get_random_keyframes(T)
+            motion = model.get_interpolated_motion(GT_motion, keyframes)
+            motion = (motion - motion_mean) / motion_std
+            traj   = (GT_traj - traj_mean) / traj_std
+            pred_motion, pred_contact = model.forward(motion, traj, keyframes)
             pred_motion = pred_motion * motion_std + motion_mean
 
             # predicted motion
             pred_local_R6, pred_global_p, pred_traj = utils.get_motion_and_trajectory(pred_motion, skeleton, v_forward)
             pred_feet_v, _ = utils.get_velocity_and_contact(pred_global_p, feet_ids, config.contact_vel_threshold)
-            pred_local_R6 = pred_local_R6.reshape(B, T, -1)
-            pred_global_p = pred_global_p.reshape(B, T, -1)
 
             """ 3. Loss & Backward """
             # loss
-            loss_pose    = config.weight_pose * (utils.recon_loss(pred_local_R6 * pred_score, GT_local_R6 * GT_score) + utils.recon_loss(pred_global_p * pred_score, GT_global_p * GT_score))
-            loss_score   = config.weight_score * utils.recon_loss(pred_score, GT_score)
-            loss_traj    = config.weight_traj * (utils.traj_loss(pred_traj, GT_traj))
+            loss_pose    = config.weight_pose    * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
+            loss_vel     = config.weight_vel     * utils.recon_loss(pred_global_p[:, 1:] - pred_global_p[:, :-1], GT_global_p[:, 1:] - GT_global_p[:, :-1])
+            loss_traj    = config.weight_traj    * utils.traj_loss(pred_traj, GT_traj)
             loss_contact = config.weight_contact * utils.recon_loss(pred_contact, GT_contact)
-            loss_foot    = config.weight_foot * utils.foot_loss(pred_feet_v, pred_contact.detach())
+            loss_foot    = config.weight_foot    * utils.foot_loss(pred_feet_v, pred_contact.detach())
 
-            loss = loss_pose + loss_score + loss_traj + loss_contact + loss_foot
+            loss = loss_pose + loss_vel + loss_traj + loss_contact + loss_foot
 
             # backward
             optim.zero_grad()
@@ -112,13 +112,13 @@ if __name__ == "__main__":
             """ 4. Log """
             loss_dict["total"]   += loss.item()
             loss_dict["pose"]    += loss_pose.item()
-            loss_dict["score"]   += loss_score.item()
+            loss_dict["vel"]     += loss_vel.item()
             loss_dict["traj"]    += loss_traj.item()
             loss_dict["contact"] += loss_contact.item()
             loss_dict["foot"]    += loss_foot.item()
 
             if iter % config.log_interval == 0:
-                utils.write_log(writer, loss_dict, config.log_interval, iter, train=True)
+                utils.write_log(writer, loss_dict, config.log_interval, iter, elapsed=time.perf_counter() - start_time, train=True)
                 utils.reset_log(loss_dict)
             
             """ 5. Validation """
@@ -128,52 +128,51 @@ if __name__ == "__main__":
                     val_loss_dict = {
                         "total":   0,
                         "pose":    0,
-                        "score":   0,
+                        "vel":     0,
                         "traj":    0,
                         "contact": 0,
                         "foot":    0,
                     }
-                    for GT_keyframe in tqdm(val_dataloader, desc=f"Validation", leave=False):
+                    for GT_motion in tqdm(val_dataloader, desc=f"Validation", leave=False):
                         """ 1. GT data """
-                        B, T, D = GT_keyframe.shape
-                        GT_keyframe = GT_keyframe.to(device)
-                        GT_motion, GT_traj, GT_score = torch.split(GT_keyframe, [D-5, 4, 1], dim=-1)
+                        # max transition length
+                        B, T, D = GT_motion.shape
+                        GT_motion = GT_motion.to(device)
 
+                        GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
                         GT_local_R6, GT_global_p = utils.get_motion(GT_motion, skeleton)
                         GT_feet_v, GT_contact = utils.get_velocity_and_contact(GT_global_p, feet_ids, config.contact_vel_threshold)
-                        GT_local_R6 = GT_local_R6.reshape(B, T, -1)
-                        GT_global_p = GT_global_p.reshape(B, T, -1)
                         
                         """ 2. Forward """
                         # normalize - forward - denormalize
-                        motion = (GT_motion - motion_mean) / motion_std
-                        traj   = (GT_traj   - traj_mean)   / traj_std
-                        pred_motion, pred_score, pred_contact = model.forward(motion, traj)
+                        keyframes = model.get_random_keyframes(T)
+                        motion = model.get_interpolated_motion(GT_motion, keyframes)
+                        motion = (motion - motion_mean) / motion_std
+                        traj   = (GT_traj - traj_mean) / traj_std
+                        pred_motion, pred_contact = model.forward(motion, traj, keyframes)
                         pred_motion = pred_motion * motion_std + motion_mean
 
                         # predicted motion
                         pred_local_R6, pred_global_p, pred_traj = utils.get_motion_and_trajectory(pred_motion, skeleton, v_forward)
                         pred_feet_v, _ = utils.get_velocity_and_contact(pred_global_p, feet_ids, config.contact_vel_threshold)
-                        pred_local_R6 = pred_local_R6.reshape(B, T, -1)
-                        pred_global_p = pred_global_p.reshape(B, T, -1)
 
-                        """ 3. Loss """
+                        """ 3. Loss & Backward """
                         # loss
-                        loss_pose    = config.weight_pose * (utils.recon_loss(pred_local_R6 * pred_score, GT_local_R6 * GT_score) + utils.recon_loss(pred_global_p * pred_score, GT_global_p * GT_score))
-                        loss_score   = config.weight_score * utils.recon_loss(pred_score, GT_score)
-                        loss_traj    = config.weight_traj * (utils.traj_loss(pred_traj, GT_traj))
+                        loss_pose    = config.weight_pose    * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
+                        loss_vel     = config.weight_vel     * utils.recon_loss(pred_global_p[:, 1:] - pred_global_p[:, :-1], GT_global_p[:, 1:] - GT_global_p[:, :-1])
+                        loss_traj    = config.weight_traj    * utils.traj_loss(pred_traj, GT_traj)
                         loss_contact = config.weight_contact * utils.recon_loss(pred_contact, GT_contact)
-                        loss_foot    = config.weight_foot * utils.foot_loss(pred_feet_v, pred_contact.detach())
+                        loss_foot    = config.weight_foot    * utils.foot_loss(pred_feet_v, pred_contact.detach())
 
-                        loss = loss_pose + loss_score + loss_traj + loss_contact + loss_foot
+                        loss = loss_pose + loss_vel + loss_traj + loss_contact + loss_foot
 
                         # log
-                        val_loss_dict["total"]   += loss.item()
-                        val_loss_dict["pose"]    += loss_pose.item()
-                        val_loss_dict["score"]   += loss_score.item()
-                        val_loss_dict["traj"]    += loss_traj.item()
-                        val_loss_dict["contact"] += loss_contact.item()
-                        val_loss_dict["foot"]    += loss_foot.item()
+                        val_loss_dict["total"]    += loss.item()
+                        val_loss_dict["pose"]     += loss_pose.item()
+                        val_loss_dict["vel"]      += loss_vel.item()
+                        val_loss_dict["traj"]     += loss_traj.item()
+                        val_loss_dict["contact"]  += loss_contact.item()
+                        val_loss_dict["foot"]     += loss_foot.item()
 
                 # write and print log
                 utils.write_log(writer, val_loss_dict, len(val_dataloader), iter, train=False)
