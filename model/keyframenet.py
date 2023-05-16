@@ -10,11 +10,7 @@ def get_mask(batch, context_frames):
     batch_mask = torch.ones(B, T, 1, dtype=batch.dtype, device=batch.device)
     batch_mask[:, context_frames:-1, :] = 0
 
-    # True for unknown frames, False for known frames
-    attn_mask = torch.zeros(T, T, dtype=torch.bool, device=batch.device)
-    attn_mask[:, context_frames:-1] = True
-   
-    return batch_mask, attn_mask
+    return batch_mask
 
 def get_keyframe_relative_position(window_length, context_frames):
     position = torch.arange(window_length, dtype=torch.float32)
@@ -26,11 +22,10 @@ def get_keyframe_relative_position(window_length, context_frames):
     return p_kf
 
 class KeyframeNet(nn.Module):
-    def __init__(self, d_motion, d_traj, d_contact, config):
+    def __init__(self, d_motion, d_traj, config):
         super(KeyframeNet, self).__init__()
         self.d_motion = d_motion
         self.d_traj = d_traj
-        self.d_contact = d_contact
         self.config = config
 
         self.d_model        = config.d_model
@@ -81,19 +76,19 @@ class KeyframeNet(nn.Module):
         self.decoder = nn.Sequential(
             nn.Linear(self.d_model, self.d_model),
             nn.PReLU(),
-            nn.Linear(self.d_model, self.d_motion + 1 + self.d_contact), # (motion, kf_score, contact)
+            nn.Linear(self.d_model, self.d_motion + 1) # (motion, kf_score)
         )
     
     def forward(self, motion, traj):
         B, T, D = motion.shape
 
         # original motion
-        original_motion = motion.clone()
+        original_motion = motion.detach().clone()
         
         # mask
-        batch_mask, _ = get_mask(motion, self.config.context_frames)
-        masked_motion = motion * batch_mask
-        x = self.motion_encoder(torch.cat([masked_motion, traj, batch_mask], dim=-1))
+        batch_mask = get_mask(motion, self.config.context_frames)
+        motion = motion * batch_mask
+        x = self.motion_encoder(torch.cat([motion, traj, batch_mask], dim=-1))
 
         # add keyframe positional embedding
         keyframe_pos = get_keyframe_relative_position(T, self.config.context_frames).to(x.device)
@@ -120,8 +115,6 @@ class KeyframeNet(nn.Module):
         x[:, -1, :self.d_motion] = original_motion[:, -1]
 
         # output
-        motion, kf_score, contact = torch.split(x, [self.d_motion, 1, self.d_contact], dim=-1)
+        motion, kf_score = torch.split(x, [self.d_motion, 1], dim=-1)
         kf_score = torch.sigmoid(kf_score)
-        contact = torch.sigmoid(contact)
-
-        return motion, kf_score, contact
+        return motion, kf_score

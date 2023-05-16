@@ -22,7 +22,8 @@ from model.keyframenet import KeyframeNet
 if __name__ == "__main__":
     # initial settings
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = Config.load("configs/keyframenet_weighted_modified.json")
+    config = Config.load("configs/keyframenet_interp.json")
+    # config = Config.load("configs/keyframenet.json")
     util.seed()
 
     # dataset
@@ -45,7 +46,7 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = KeyframeNet(len(motion_mean), len(traj_mean), len(feet_ids), config).to(device)
+    model = KeyframeNet(len(motion_mean), len(traj_mean), config).to(device)
     utils.load_model(model, config)
     model.eval()
 
@@ -56,8 +57,8 @@ if __name__ == "__main__":
     with torch.no_grad():
         for GT_keyframe in tqdm(dataloader):
             """ 1. GT data """
+            GT_keyframe = GT_keyframe[:, :80].to(device)
             B, T, D = GT_keyframe.shape
-            GT_keyframe = GT_keyframe.to(device)
             GT_motion, GT_traj, GT_score = torch.split(GT_keyframe, [D-5, 4, 1], dim=-1)
 
             GT_local_R6, GT_root_p = torch.split(GT_motion, [D-8, 3], dim=-1)
@@ -67,7 +68,7 @@ if __name__ == "__main__":
             # normalize - forward - denormalize
             motion = (GT_motion - motion_mean) / motion_std
             traj   = (GT_traj   - traj_mean)   / traj_std
-            pred_motion, pred_score, _ = model.forward(motion, traj)
+            pred_motion, pred_score = model.forward(motion, traj)
             pred_motion = pred_motion * motion_std + motion_mean
 
             # predicted motion

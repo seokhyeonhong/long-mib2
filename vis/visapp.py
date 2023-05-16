@@ -78,7 +78,7 @@ class TwoMotionApp(MotionApp):
         self.pred_model.set_source_skeleton(self.motion.skeleton, YBOT_FBX_DICT)
         self.pred_model.meshes[0].materials[0].albedo = glm.vec3(0.5, 0.5, 0.5)
 
-        self.target_model  = copy.deepcopy(self.pred_model)
+        self.target_model  = copy.deepcopy(self.GT_model)
 
         # traj
         self.traj = traj

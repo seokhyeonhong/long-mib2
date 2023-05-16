@@ -29,6 +29,9 @@
     "min_transition": 5,
     "max_transition": 30,
 
+    "local_attn": true,
+    "use_pe": true,
+
     "dropout": 0.0,
     "n_layers": 6,
     "n_heads": 8,

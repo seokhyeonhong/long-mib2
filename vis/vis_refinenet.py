@@ -41,7 +41,7 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = RefineNet(len(motion_mean), len(traj_mean), config, local_attn=False).to(device)
+    model = RefineNet(len(motion_mean), len(traj_mean), 4, config, local_attn=False, use_pe=True).to(device)
     utils.load_model(model, config)
     model.eval()
 

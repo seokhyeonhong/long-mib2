@@ -36,7 +36,7 @@ if __name__ == "__main__":
 
     traj_mean, traj_std = dataset.traj_statistics()
     traj_mean, traj_std = traj_mean.to(device), traj_std.to(device)
-    
+
     dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
 
@@ -55,10 +55,12 @@ if __name__ == "__main__":
 
     # loss dict
     loss_dict = {
-        "total":  0,
-        "pose":   0,
-        "score":  0,
-        "traj":   0,
+        "total":   0,
+        "rot":     0,
+        "pos":     0,
+        "score":   0,
+        "traj":    0,
+        "smooth":  0,
     }
 
     # training
@@ -68,27 +70,33 @@ if __name__ == "__main__":
             """ 1. GT data """
             B, T, D = GT_keyframe.shape
             GT_keyframe = GT_keyframe.to(device)
-            GT_motion, GT_traj, GT_score = torch.split(GT_keyframe, [D-5, 4, 1], dim=-1)
 
+            GT_motion, GT_traj, GT_score = torch.split(GT_keyframe, [D-5, 4, 1], dim=-1)
             GT_local_R6, GT_global_p = utils.get_motion(GT_motion, skeleton)
+            GT_local_R6 = GT_local_R6.reshape(B, T, -1)
+            GT_global_p = GT_global_p.reshape(B, T, -1)
             
             """ 2. Forward """
             # normalize - forward - denormalize
             motion = (GT_motion - motion_mean) / motion_std
-            traj   = (GT_traj   - traj_mean)   / traj_std
+            traj   = (GT_traj - traj_mean) / traj_std
             pred_motion, pred_score = model.forward(motion, traj)
             pred_motion = pred_motion * motion_std + motion_mean
 
             # predicted motion
             pred_local_R6, pred_global_p, pred_traj = utils.get_motion_and_trajectory(pred_motion, skeleton, v_forward)
+            pred_local_R6 = pred_local_R6.reshape(B, T, -1)
+            pred_global_p = pred_global_p.reshape(B, T, -1)
 
             """ 3. Loss & Backward """
             # loss
-            loss_pose  = config.weight_pose * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
-            loss_score = config.weight_score * utils.recon_loss(pred_score, GT_score)
-            loss_traj  = config.weight_traj * (utils.traj_loss(pred_traj, GT_traj))
+            loss_rot    = config.weight_rot    * utils.recon_loss(pred_local_R6[:, config.context_frames:-1], GT_local_R6[:, config.context_frames:-1])
+            loss_pos    = config.weight_pos    * utils.recon_loss(pred_global_p[:, config.context_frames:-1], GT_global_p[:, config.context_frames:-1])
+            loss_score  = config.weight_score  * utils.recon_loss(pred_score[:, config.context_frames:-1], GT_score[:, config.context_frames:-1])
+            loss_traj   = config.weight_traj   * utils.traj_loss(pred_traj[:, config.context_frames:-1], GT_traj[:, config.context_frames:-1])
+            loss_smooth = config.weight_smooth * utils.smooth_loss(pred_global_p[:, config.context_frames-1:])
 
-            loss = loss_pose + loss_score + loss_traj
+            loss = loss_rot + loss_pos + loss_score + loss_traj + loss_smooth
 
             # backward
             optim.zero_grad()
@@ -96,13 +104,15 @@ if __name__ == "__main__":
             optim.step()
 
             """ 4. Log """
-            loss_dict["total"] += loss.item()
-            loss_dict["pose"]  += loss_pose.item()
-            loss_dict["score"] += loss_score.item()
-            loss_dict["traj"]  += loss_traj.item()
+            loss_dict["total"]   += loss.item()
+            loss_dict["rot"]     += loss_rot.item()
+            loss_dict["pos"]     += loss_pos.item()
+            loss_dict["score"]   += loss_score.item()
+            loss_dict["traj"]    += loss_traj.item()
+            loss_dict["smooth"]  += loss_smooth.item()
 
             if iter % config.log_interval == 0:
-                utils.write_log(writer, loss_dict, config.log_interval, iter, train=True)
+                utils.write_log(writer, loss_dict, config.log_interval, iter, train=True, elapsed=time.perf_counter() - start_time)
                 utils.reset_log(loss_dict)
             
             """ 5. Validation """
@@ -110,18 +120,22 @@ if __name__ == "__main__":
                 model.eval()
                 with torch.no_grad():
                     val_loss_dict = {
-                        "total": 0,
-                        "pose":  0,
-                        "score": 0,
-                        "traj":  0,
+                        "total":   0,
+                        "rot":     0,
+                        "pos":     0,
+                        "score":   0,
+                        "traj":    0,
+                        "smooth":  0,
                     }
                     for GT_keyframe in tqdm(val_dataloader, desc=f"Validation", leave=False):
                         """ 1. GT data """
                         B, T, D = GT_keyframe.shape
                         GT_keyframe = GT_keyframe.to(device)
-                        GT_motion, GT_traj, GT_score = torch.split(GT_keyframe, [D-5, 4, 1], dim=-1)
 
+                        GT_motion, GT_traj, GT_score = torch.split(GT_keyframe, [D-5, 4, 1], dim=-1)
                         GT_local_R6, GT_global_p = utils.get_motion(GT_motion, skeleton)
+                        GT_local_R6 = GT_local_R6.reshape(B, T, -1)
+                        GT_global_p = GT_global_p.reshape(B, T, -1)
                         
                         """ 2. Forward """
                         # normalize - forward - denormalize
@@ -132,23 +146,29 @@ if __name__ == "__main__":
 
                         # predicted motion
                         pred_local_R6, pred_global_p, pred_traj = utils.get_motion_and_trajectory(pred_motion, skeleton, v_forward)
+                        pred_local_R6 = pred_local_R6.reshape(B, T, -1)
+                        pred_global_p = pred_global_p.reshape(B, T, -1)
 
-                        """ 3. Loss """
+                        """ 3. Loss & Backward """
                         # loss
-                        loss_pose  = config.weight_pose * (utils.recon_loss(pred_local_R6, GT_local_R6) + utils.recon_loss(pred_global_p, GT_global_p))
-                        loss_score = config.weight_score * utils.recon_loss(pred_score, GT_score)
-                        loss_traj  = config.weight_traj * (utils.traj_loss(pred_traj, GT_traj))
+                        loss_rot    = config.weight_rot   * utils.recon_loss(pred_local_R6 * pred_score, GT_local_R6 * GT_score)
+                        loss_pos    = config.weight_pos   * utils.recon_loss(pred_global_p * pred_score, GT_global_p * GT_score)
+                        loss_score  = config.weight_score * utils.recon_loss(pred_score, GT_score)
+                        loss_traj   = config.weight_traj  * utils.traj_loss(pred_traj, GT_traj)
+                        loss_smooth = config.weight_smooth * utils.smooth_loss(pred_global_p)
 
-                        loss = loss_pose + loss_score + loss_traj
+                        loss = loss_rot + loss_pos + loss_score + loss_traj #+ loss_smooth
 
                         # log
                         val_loss_dict["total"]  += loss.item()
-                        val_loss_dict["pose"]   += loss_pose.item()
+                        val_loss_dict["rot"]    += loss_rot.item()
+                        val_loss_dict["pos"]    += loss_pos.item()
                         val_loss_dict["score"]  += loss_score.item()
                         val_loss_dict["traj"]   += loss_traj.item()
+                        val_loss_dict["smooth"] += loss_smooth.item()
 
                 # write and print log
-                utils.write_log(writer, val_loss_dict, len(val_dataloader), iter, train=False)
+                utils.write_log(writer, val_loss_dict, len(val_dataloader), iter, train=False, elapsed=time.perf_counter() - start_time)
                 utils.reset_log(val_loss_dict)
 
                 # train mode

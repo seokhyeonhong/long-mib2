@@ -15,18 +15,17 @@
     "log_dir": "log/KeyframeNet",
     "log_interval": 100,
 
-    "save_dir": "save/fff",
+    "save_dir": "save/KeyframeNet",
     "save_interval": 10000,
 
     "val_interval": 1000,
 
     "batch_size": 64,
-    "epochs": 2000,
+    "epochs": 350,
     "lr": 1e-5,
 
     "min_transition": 5,
     "max_transition": 30,
-    "max_future": 60,
 
     "dropout": 0.0,
     "n_layers": 6,
@@ -35,7 +34,9 @@
     "d_ff": 2048,
     "pre_layernorm": true,
 
-    "weight_pose": 1.0,
+    "weight_rot": 1.0,
+    "weight_pos": 1.0,
     "weight_score": 1.0,
-    "weight_traj": 0.5
+    "weight_traj": 0.5,
+    "weight_smooth": 0.1
 }
