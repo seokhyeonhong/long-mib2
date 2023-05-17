@@ -68,8 +68,10 @@ if __name__ == "__main__":
     for epoch in range(init_epoch, config.epochs+1):
         for GT_keyframe in tqdm(dataloader, desc=f"Epoch {epoch} / {config.epochs}", leave=False):
             """ 1. GT data """
+            T = random.randint(config.context_frames + config.min_transition + 1, GT_keyframe.shape[1])
+            GT_keyframe = GT_keyframe[:, :T].to(device)
             B, T, D = GT_keyframe.shape
-            GT_keyframe = GT_keyframe.to(device)
+            # GT_keyframe = GT_keyframe.to(device)
 
             GT_motion, GT_traj, GT_score = torch.split(GT_keyframe, [D-5, 4, 1], dim=-1)
             GT_local_R6, GT_global_p = utils.get_motion(GT_motion, skeleton)
@@ -151,13 +153,13 @@ if __name__ == "__main__":
 
                         """ 3. Loss & Backward """
                         # loss
-                        loss_rot    = config.weight_rot   * utils.recon_loss(pred_local_R6 * pred_score, GT_local_R6 * GT_score)
-                        loss_pos    = config.weight_pos   * utils.recon_loss(pred_global_p * pred_score, GT_global_p * GT_score)
-                        loss_score  = config.weight_score * utils.recon_loss(pred_score, GT_score)
-                        loss_traj   = config.weight_traj  * utils.traj_loss(pred_traj, GT_traj)
-                        loss_smooth = config.weight_smooth * utils.smooth_loss(pred_global_p)
+                        loss_rot    = config.weight_rot    * utils.recon_loss(pred_local_R6[:, config.context_frames:-1], GT_local_R6[:, config.context_frames:-1])
+                        loss_pos    = config.weight_pos    * utils.recon_loss(pred_global_p[:, config.context_frames:-1], GT_global_p[:, config.context_frames:-1])
+                        loss_score  = config.weight_score  * utils.recon_loss(pred_score[:, config.context_frames:-1], GT_score[:, config.context_frames:-1])
+                        loss_traj   = config.weight_traj   * utils.traj_loss(pred_traj[:, config.context_frames:-1], GT_traj[:, config.context_frames:-1])
+                        loss_smooth = config.weight_smooth * utils.smooth_loss(pred_global_p[:, config.context_frames-1:])
 
-                        loss = loss_rot + loss_pos + loss_score + loss_traj #+ loss_smooth
+                        loss = loss_rot + loss_pos + loss_score + loss_traj + loss_smooth
 
                         # log
                         val_loss_dict["total"]  += loss.item()

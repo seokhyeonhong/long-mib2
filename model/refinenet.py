@@ -146,7 +146,7 @@ class RefineNet(nn.Module):
         B, T, D = interp_motion.shape
         
         # original motion
-        original_x = interp_motion.clone()
+        original_x = interp_motion.detach().clone()
 
         # mask
         batch_mask = self.get_mask_by_keyframe(interp_motion, keyframes)
