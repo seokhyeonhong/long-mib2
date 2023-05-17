@@ -22,7 +22,7 @@ from model.twostage import ContextTransformer
 if __name__ == "__main__":
     # initial settings
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config  = Config.load("configs/context.json")
+    config  = Config.load("configs/context_notraj.json")
     util.seed()
 
     # dataset
@@ -37,12 +37,13 @@ if __name__ == "__main__":
     motion_mean, motion_std = stat_dset.motion_statistics()
     motion_mean, motion_std = motion_mean.to(device), motion_std.to(device)
 
-    traj_mean, traj_std = stat_dset.traj_statistics()
-    traj_mean, traj_std = traj_mean.to(device), traj_std.to(device)
+    # traj_mean, traj_std = stat_dset.traj_statistics()
+    # traj_mean, traj_std = traj_mean.to(device), traj_std.to(device)
 
     # model
     print("Initializing model...")
-    ctx_model = ContextTransformer(len(motion_mean), len(traj_mean), config).to(device)
+    ctx_model = ContextTransformer(len(motion_mean), config).to(device)
+    # ctx_model = ContextTransformer(len(motion_mean), config, d_traj=len(traj_mean)).to(device)
     utils.load_model(ctx_model, config)
     ctx_model.eval()
 
@@ -65,8 +66,9 @@ if __name__ == "__main__":
             """ 2. Train KF-VAE """
             # forward
             motion = (GT_motion - motion_mean) / motion_std
-            traj   = (GT_traj - traj_mean) / traj_std
-            pred_motion, mask = ctx_model.forward(motion, traj, ratio_constrained=0.0)
+            # traj   = (GT_traj - traj_mean) / traj_std
+            pred_motion, mask = ctx_model.forward(motion, ratio_constrained=0.0)
+            # pred_motion, mask = ctx_model.forward(motion, traj, ratio_constrained=0.0)
             pred_motion = pred_motion * motion_std + motion_mean
 
             # get motion

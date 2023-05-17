@@ -130,7 +130,7 @@ class ContextTransformer(nn.Module):
         return x, batch_mask
 
 class DetailTransformer(nn.Module):
-    def __init__(self, d_motion, d_traj, config):
+    def __init__(self, d_motion, config, d_traj=0):
         super(DetailTransformer, self).__init__()
         self.d_motion = d_motion
         self.d_traj = d_traj
@@ -180,13 +180,16 @@ class DetailTransformer(nn.Module):
             nn.Linear(self.d_model, self.d_motion + 4),
         )
     
-    def forward(self, x, traj, batch_mask):
+    def forward(self, x, batch_mask, traj=None):
         B, T, D = x.shape
 
         original_x = x.clone()
         
         # mask
-        x = self.encoder(torch.cat([x, traj, batch_mask], dim=-1))
+        if traj is None:
+            x = self.encoder(torch.cat([x, batch_mask], dim=-1))
+        else:
+            x = self.encoder(torch.cat([x, traj, batch_mask], dim=-1))
 
         # relative distance range: [-T+1, ..., T-1], 2T-1 values in total
         rel_dist = torch.arange(-T+1, T, dtype=torch.float32).unsqueeze(-1).to(x.device) # (2T-1, 1)

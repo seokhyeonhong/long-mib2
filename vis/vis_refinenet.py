@@ -22,7 +22,7 @@ from model.refinenet import RefineNet
 if __name__ == "__main__":
     # initial settings
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = Config.load("configs/refinenet.json")
+    config = Config.load("configs/refinenet_nope.json")
     util.seed()
 
     # dataset
@@ -41,7 +41,7 @@ if __name__ == "__main__":
 
     # model
     print("Initializing model...")
-    model = RefineNet(len(motion_mean), len(traj_mean), 4, config, local_attn=False, use_pe=True).to(device)
+    model = RefineNet(len(motion_mean), len(traj_mean), len(config.contact_joint_names), config, local_attn=config.local_attn, use_pe=config.use_pe).to(device)
     utils.load_model(model, config)
     model.eval()
 

@@ -36,7 +36,6 @@ if __name__ == "__main__":
     traj_mean, traj_std = ctx_dataset.traj_statistics()
     traj_mean, traj_std = traj_mean.to(device), traj_std.to(device)
 
-
     # model
     print("Initializing model...")
     ctx_model = ContextTransformer(len(motion_mean), len(traj_mean), ctx_config).to(device)
