@@ -32,7 +32,7 @@ def get_keyframe_relative_position(window_length, context_frames):
     return p_kf
 
 class ContextTransformer(nn.Module):
-    def __init__(self, d_motion, d_traj, config):
+    def __init__(self, d_motion, config, d_traj=0):
         super(ContextTransformer, self).__init__()
         self.d_motion = d_motion
         self.d_traj = d_traj
@@ -89,7 +89,7 @@ class ContextTransformer(nn.Module):
             nn.Linear(self.d_model, self.d_motion),
         )
     
-    def forward(self, x, traj, ratio_constrained=0.1):
+    def forward(self, x, traj=None, ratio_constrained=0.1):
         B, T, D = x.shape
 
         original_x = x.clone()
@@ -99,7 +99,10 @@ class ContextTransformer(nn.Module):
         masked_x = x * batch_mask
 
         # encoder
-        x = self.encoder(torch.cat([masked_x, traj, batch_mask], dim=-1))
+        if traj is None:
+            x = self.encoder(torch.cat([masked_x, batch_mask], dim=-1))
+        else:
+            x = self.encoder(torch.cat([masked_x, traj, batch_mask], dim=-1))
 
         # add keyframe positional embedding
         keyframe_pos = get_keyframe_relative_position(T, self.config.context_frames).to(x.device)

@@ -22,7 +22,7 @@ from utility import utils
 if __name__ == "__main__":
     # initial settings
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = Config.load("configs/context.json")
+    config = Config.load("configs/context_notraj.json")
     util.seed()
 
     # dataset
@@ -35,15 +35,12 @@ if __name__ == "__main__":
     motion_mean, motion_std = dataset.motion_statistics(dim=(0, 1))
     motion_mean, motion_std = motion_mean.to(device), motion_std.to(device)
 
-    traj_mean, traj_std = dataset.traj_statistics(dim=(0, 1))
-    traj_mean, traj_std = traj_mean.to(device), traj_std.to(device)
-    
     dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
 
     # model
     print("Initializing model...")
-    model = ContextTransformer(len(motion_mean), config, d_traj=len(traj_mean)).to(device)
+    model = ContextTransformer(len(motion_mean), config).to(device)
     optim = torch.optim.Adam(model.parameters(), lr=config.lr, betas=(0.9, 0.999), eps=1e-8)
     init_epoch, iter = utils.load_latest_ckpt(model, optim, config)
     init_iter = iter
@@ -60,7 +57,6 @@ if __name__ == "__main__":
         "rot":    0,
         "pos":    0,
         "smooth": 0,
-        "traj":   0,
     }
     start_time = time.perf_counter()
     for epoch in range(init_epoch, config.epochs+1):
@@ -76,17 +72,15 @@ if __name__ == "__main__":
 
             # forward
             motion_batch = (GT_motion - motion_mean) / motion_std
-            traj_batch   = (GT_traj - traj_mean) / traj_std
-            pred_motion, _ = model.forward(motion_batch, traj=traj_batch)
+            pred_motion, _ = model.forward(motion_batch)
             pred_motion = pred_motion * motion_std + motion_mean
-            pred_local_R6, pred_global_p, pred_traj = utils.get_motion_and_trajectory(pred_motion, skeleton, v_forward)
+            pred_local_R6, pred_global_p = utils.get_motion(pred_motion, skeleton)
             
             # loss
             loss_rot    = config.weight_rot    * utils.recon_loss(pred_local_R6[:, config.context_frames:-1], GT_local_R6[:, config.context_frames:-1])
             loss_pos    = config.weight_pos    * utils.recon_loss(pred_global_p[:, config.context_frames:-1], GT_global_p[:, config.context_frames:-1])
             loss_smooth = config.weight_smooth * utils.smooth_loss(pred_global_p[:, config.context_frames-1:])
-            loss_traj   = config.weight_traj   * utils.traj_loss(pred_traj[:, config.context_frames:-1], GT_traj[:, config.context_frames:-1])
-            loss        = loss_rot + loss_pos + loss_smooth + loss_traj
+            loss        = loss_rot + loss_pos + loss_smooth
 
             # backward
             optim.zero_grad()
@@ -98,7 +92,6 @@ if __name__ == "__main__":
             loss_dict["rot"]    += loss_rot.item()
             loss_dict["pos"]    += loss_pos.item()
             loss_dict["smooth"] += loss_smooth.item()
-            loss_dict["traj"]   += loss_traj.item()
 
             if iter % config.log_interval == 0:
                 utils.write_log(writer, loss_dict, config.log_interval, iter, elapsed=time.perf_counter() - start_time, train=True)
@@ -113,7 +106,6 @@ if __name__ == "__main__":
                         "rot":    0,
                         "pos":    0,
                         "smooth": 0,
-                        "traj":   0,
                     }
                     for GT_motion in val_dataloader:
                         # GT
@@ -126,24 +118,21 @@ if __name__ == "__main__":
 
                         # forward
                         motion_batch = (GT_motion - motion_mean) / motion_std
-                        traj_batch   = (GT_traj - traj_mean) / traj_std
-                        pred_motion, _ = model.forward(motion_batch, traj=traj_batch)
+                        pred_motion, _ = model.forward(motion_batch)
                         pred_motion = pred_motion * motion_std + motion_mean
-                        pred_local_R6, pred_global_p, pred_traj = utils.get_motion_and_trajectory(pred_motion, skeleton, v_forward)
+                        pred_local_R6, pred_global_p = utils.get_motion(pred_motion, skeleton)
 
                         # loss
                         loss_rot    = config.weight_rot    * utils.recon_loss(pred_local_R6[:, config.context_frames:-1], GT_local_R6[:, config.context_frames:-1])
                         loss_pos    = config.weight_pos    * utils.recon_loss(pred_global_p[:, config.context_frames:-1], GT_global_p[:, config.context_frames:-1])
                         loss_smooth = config.weight_smooth * utils.smooth_loss(pred_global_p[:, config.context_frames-1:])
-                        loss_traj   = config.weight_traj   * utils.traj_loss(pred_traj[:, config.context_frames:-1], GT_traj[:, config.context_frames:-1])
-                        loss        = loss_rot + loss_pos + loss_smooth + loss_traj
+                        loss        = loss_rot + loss_pos + loss_smooth
 
                         # log
                         val_loss_dict["total"]  += loss.item()
                         val_loss_dict["rot"]    += loss_rot.item()
                         val_loss_dict["pos"]    += loss_pos.item()
                         val_loss_dict["smooth"] += loss_smooth.item()
-                        val_loss_dict["traj"]   += loss_traj.item()
 
                     utils.write_log(writer, val_loss_dict, len(val_dataloader), iter, elapsed=time.perf_counter() - start_time, train=False)
                     utils.reset_log(val_loss_dict)
