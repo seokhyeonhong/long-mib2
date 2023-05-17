@@ -37,12 +37,18 @@ class MotionDataset(Dataset):
 
         # calculate statistics from training set
         trainset = MotionDataset(True, self.config)
+        dataloader = DataLoader(trainset, batch_size=self.config.batch_size, shuffle=False)
+
+        # batches
+        batches = []
+        for batch in dataloader:
+            batches.append(batch)
+        batches = torch.cat(batches, dim=0)
 
         # mean and std
-        X = torch.stack([trainset[i] for i in range(len(trainset))], dim=0)
-        X = X[..., :-4]
-        mean = torch.mean(X, dim=dim)
-        std = torch.std(X, dim=dim) + 1e-8
+        batches = batches[..., :-4] # 4 for traj
+        mean = torch.mean(batches, dim=dim)
+        std = torch.std(batches, dim=dim) + 1e-8
 
         return mean, std
 
@@ -51,15 +57,21 @@ class MotionDataset(Dataset):
 
         # calculate statistics from training set
         trainset = MotionDataset(True, self.config)
+        dataloader = DataLoader(trainset, batch_size=self.config.batch_size, shuffle=False)
+
+        # batches
+        batches = []
+        for batch in dataloader:
+            batches.append(batch)
+        batches = torch.cat(batches, dim=0)
 
         # mean and std
-        X = torch.stack([trainset[i] for i in range(len(trainset))], dim=0)
-        X = X[..., -4:]
-        mean = torch.mean(X, dim=dim)
-        std = torch.std(X, dim=dim) + 1e-8
+        batches = batches[..., -4:] # 4 for traj
+        mean = torch.mean(batches, dim=dim)
+        std = torch.std(batches, dim=dim) + 1e-8
 
         return mean, std
-    
+
     def test_statistics(self):
         print(f"Calculating MotionDataset test_mean and test_std...")
 
