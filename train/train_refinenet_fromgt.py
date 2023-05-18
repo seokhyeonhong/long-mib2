@@ -87,7 +87,6 @@ if __name__ == "__main__":
             """ 3. Forward RefineNet """
             # keyframes
             keyframes = model.get_random_keyframes(T)
-            print(keyframes)
             motion = model.get_interpolated_motion(GT_motion, keyframes)
 
             # normalize - forward - denormalize
