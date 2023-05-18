@@ -142,7 +142,7 @@ if __name__ == "__main__":
                         "contact": 0,
                         "foot":    0,
                     }
-                    for GT_motion in tqdm(val_dataloader, desc=f"Validation", leave=False):
+                    for GT_motion in val_dataloader:
                         """ 1. GT data """
                         # max transition length
                         B, T, D = GT_motion.shape

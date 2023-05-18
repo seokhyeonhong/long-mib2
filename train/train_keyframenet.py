@@ -129,7 +129,7 @@ if __name__ == "__main__":
                         "traj":    0,
                         "smooth":  0,
                     }
-                    for GT_keyframe in tqdm(val_dataloader, desc=f"Validation", leave=False):
+                    for GT_keyframe in val_dataloader:
                         """ 1. GT data """
                         B, T, D = GT_keyframe.shape
                         GT_keyframe = GT_keyframe.to(device)

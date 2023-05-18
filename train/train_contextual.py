@@ -135,7 +135,7 @@ if __name__ == "__main__":
                         "traj":   0,
                         "smooth": 0,
                     }
-                    for GT_motion in tqdm(val_dataloader, desc=f"Validation", leave=False):
+                    for GT_motion in val_dataloader:
                         # GT motion data
                         B, T, D = GT_motion.shape
                         GT_motion = GT_motion.to(device)
