@@ -30,8 +30,8 @@ if __name__ == "__main__":
     print("Loading dataset...")
     dataset    = MotionDataset(train=False, config=ref_config)
     dataloader = DataLoader(dataset, batch_size=ref_config.batch_size, shuffle=True)
-    skeleton    = dataset.skeleton
-    v_forward   = torch.from_numpy(ref_config.v_forward).to(device)
+    skeleton   = dataset.skeleton
+    v_forward  = torch.from_numpy(ref_config.v_forward).to(device)
 
     motion_mean, motion_std = dataset.motion_statistics()
     motion_mean, motion_std = motion_mean.to(device), motion_std.to(device)

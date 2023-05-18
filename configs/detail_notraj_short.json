@@ -12,10 +12,10 @@
     "contact_joint_names": ["LeftFoot", "LeftToeBase", "RightFoot", "RightToeBase"],
     "contact_vel_threshold": 2e-4,
 
-    "log_dir": "log/DetailTransformer-NoTraj",
+    "log_dir": "log/DetailTransformer-NoTrajShort",
     "log_interval": 100,
 
-    "save_dir": "save/DetailTransformer-NoTraj",
+    "save_dir": "save/DetailTransformer-NoTrajShort",
     "save_interval": 10000,
 
     "val_interval": 1000,
@@ -26,7 +26,7 @@
     "warmup_iters": 8000,
 
     "min_transition": 5,
-    "max_transition": 90,
+    "max_transition": 30,
 
     "dropout": 0.0,
     "n_layers": 6,
