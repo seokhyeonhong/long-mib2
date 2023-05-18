@@ -26,7 +26,7 @@
     "warmup_iters": 8000,
 
     "min_transition": 5,
-    "max_transition": 30,
+    "max_transition": 90,
 
     "local_attn": false,
     "use_pe": false,
