@@ -263,6 +263,15 @@ def restore_motion(motion, R_diff, root_p_diff):
     local_R6 = torch.cat([root_R6, local_R6[..., 6:]], dim=-1)
     return torch.cat([local_R6, root_p], dim=-1)
 
+def align_Q(Q):
+    B, T, D = Q.shape
+    Q = Q.reshape(B, T, -1, 4)
+
+    w_positive = (Q[..., 0:1] > 0).float()
+    Q = Q * w_positive + (1 - w_positive) * (-Q)
+
+    return Q
+
 """ Loss functions """
 def kl_loss(mean, logvar):
     # mean: (B, T, D)

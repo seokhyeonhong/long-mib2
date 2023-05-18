@@ -89,6 +89,8 @@ if __name__ == "__main__":
         l2p = torch.mean(torch.norm(norm_GT_p - norm_pred_p, dim=-1)).item()
 
         # L2Q
+        GT_global_Q     = utils.align_Q(GT_global_Q)
+        interp_global_Q = utils.align_Q(interp_global_Q)
         l2q = torch.mean(torch.norm(GT_global_Q - interp_global_Q, dim=-1)).item()
 
         # NPSS
