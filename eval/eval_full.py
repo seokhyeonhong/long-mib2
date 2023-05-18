@@ -17,7 +17,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dset_config = Config.load("configs/dataset.json")
     kf_config  = Config.load("configs/keyframenet.json")
-    ref_config = Config.load("configs/refinenet_local_nope.json")
+    ref_config = Config.load("configs/refinenet_nope.json")
 
     # dataset - test
     print("Loading dataset...")
@@ -104,11 +104,11 @@ if __name__ == "__main__":
                         transition_start = top_keyframe + 1
                     
                     # forward - interp
-                    # motion = ref_net.get_interpolated_motion(kf_motion[b:b+1], keyframes)
-                    # motion = (motion - motion_mean) / motion_std
+                    motion = ref_net.get_interpolated_motion(kf_motion[b:b+1], keyframes)
+                    motion = (motion - motion_mean) / motion_std
 
                     # forward - nointerp
-                    motion = (kf_motion[b:b+1] - motion_mean) / motion_std
+                    # motion = (kf_motion[b:b+1] - motion_mean) / motion_std
 
                     pred_motion, pred_contact = ref_net.forward(motion, traj[b:b+1], keyframes)
                     pred_motion = pred_motion * motion_std + motion_mean
@@ -147,9 +147,14 @@ if __name__ == "__main__":
             l2p = torch.mean(torch.norm(norm_GT_p - norm_pred_p, dim=-1)).item()
 
             # L2Q
+            GT_global_Q = utils.align_Q(GT_global_Q)
+            pred_global_Q = utils.align_Q(pred_global_Q)
             l2q = torch.mean(torch.norm(GT_global_Q - pred_global_Q, dim=-1)).item()
 
             # NPSS
+            B, T, J, _ = GT_global_Q.shape
+            GT_global_Q = GT_global_Q.reshape(B, T, -1)
+            pred_global_Q = pred_global_Q.reshape(B, T, -1)
             npss = benchmark.NPSS(pred_global_Q, GT_global_Q)
 
             # L2T

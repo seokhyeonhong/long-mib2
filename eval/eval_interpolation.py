@@ -94,6 +94,9 @@ if __name__ == "__main__":
         l2q = torch.mean(torch.norm(GT_global_Q - interp_global_Q, dim=-1)).item()
 
         # NPSS
+        B, T, J, _ = GT_global_Q.shape
+        GT_global_Q = GT_global_Q.reshape(B, T, -1)
+        interp_global_Q = interp_global_Q.reshape(B, T, -1)
         npss = benchmark.NPSS(interp_global_Q, GT_global_Q)
 
         # L2T
