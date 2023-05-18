@@ -15,21 +15,22 @@ from model.refinenet import RefineNet
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dset_config = Config.load("configs/dataset.json")
     kf_config  = Config.load("configs/keyframenet.json")
-    ref_config = Config.load("configs/refinenet_nope.json")
+    ref_config = Config.load("configs/refinenet_local_nope.json")
 
     # dataset - test
     print("Loading dataset...")
-    dataset    = MotionDataset(train=False, config=ref_config)
+    dataset    = MotionDataset(train=False, config=dset_config)
     dataloader = DataLoader(dataset, batch_size=ref_config.batch_size, shuffle=False)
-
-    test_mean, test_std = dataset.test_statistics()
-    test_mean, test_std = test_mean.to(device), test_std.to(device)
 
     # dataset - context
     ref_dataset = MotionDataset(train=True, config=ref_config)
     skeleton    = ref_dataset.skeleton
     v_forward   = torch.from_numpy(ref_config.v_forward).to(device)
+
+    test_mean, test_std = ref_dataset.test_statistics()
+    test_mean, test_std = test_mean.to(device), test_std.to(device)
 
     motion_mean, motion_std = ref_dataset.motion_statistics()
     motion_mean, motion_std = motion_mean.to(device), motion_std.to(device)
@@ -47,12 +48,13 @@ if __name__ == "__main__":
     utils.load_model(kf_net, kf_config)
     kf_net.eval()
 
-    ref_net = RefineNet(len(motion_mean), len(traj_mean), len(feet_ids), ref_config, local_attn=False, use_pe=False).to(device)
+    ref_net = RefineNet(len(motion_mean), len(traj_mean), len(feet_ids), ref_config, local_attn=ref_config.local_attn, use_pe=ref_config.use_pe).to(device)
     utils.load_model(ref_net, ref_config)
     ref_net.eval()
 
     # evaluation
-    transition = [5, 15, 30, 45, 60, 90]
+    # transition = [5, 15, 30, 45, 60, 90]
+    transition = [5, 15, 30, 45, 60, 90, 105, 120, 135, 150, 165, 180]
     for t in transition:
         total_len = ref_config.context_frames + t + 1
             
@@ -101,9 +103,13 @@ if __name__ == "__main__":
                         keyframes.append(top_keyframe)
                         transition_start = top_keyframe + 1
                     
-                    # forward
-                    motion = ref_net.get_interpolated_motion(kf_motion[b:b+1], keyframes)
-                    motion = (motion - motion_mean) / motion_std
+                    # forward - interp
+                    # motion = ref_net.get_interpolated_motion(kf_motion[b:b+1], keyframes)
+                    # motion = (motion - motion_mean) / motion_std
+
+                    # forward - nointerp
+                    motion = (kf_motion[b:b+1] - motion_mean) / motion_std
+
                     pred_motion, pred_contact = ref_net.forward(motion, traj[b:b+1], keyframes)
                     pred_motion = pred_motion * motion_std + motion_mean
                     pred_motions.append(pred_motion)

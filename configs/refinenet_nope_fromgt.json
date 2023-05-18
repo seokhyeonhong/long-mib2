@@ -12,21 +12,24 @@
     "contact_joint_names": ["LeftFoot", "LeftToeBase", "RightFoot", "RightToeBase"],
     "contact_vel_threshold": 2e-4,
 
-    "log_dir": "log/DetailTransformer",
+    "log_dir": "log/RefineNet-NoPE-FromGT",
     "log_interval": 100,
 
-    "save_dir": "save/DetailTransformer",
+    "save_dir": "save/RefineNet-NoPE-FromGT",
     "save_interval": 10000,
 
     "val_interval": 1000,
 
     "batch_size": 64,
-    "epochs": 2000,
+    "epochs": 3000,
     "lr": 1e-5,
     "warmup_iters": 8000,
 
     "min_transition": 5,
-    "max_transition": 90,
+    "max_transition": 30,
+
+    "local_attn": false,
+    "use_pe": false,
 
     "dropout": 0.0,
     "n_layers": 6,
@@ -36,8 +39,9 @@
     "pre_layernorm": true,
 
     "weight_rot": 1.0,
-    "weight_pos": 2.0,
-    "weight_traj": 0.1,
-    "weight_contact": 0.05,
-    "weight_foot": 0.05
+    "weight_pos": 1.0,
+    "weight_vel": 0.5,
+    "weight_traj": 0.5,
+    "weight_contact": 0.1,
+    "weight_foot": 0.1
 }

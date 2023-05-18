@@ -24,7 +24,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     kf_config  = Config.load("configs/keyframenet.json")
     # ref_config = Config.load("configs/refinenet.json")
-    ref_config = Config.load("configs/refinenet_nope.json")
+    ref_config = Config.load("configs/refinenet_nope_nointerp.json")
 
     # dataset - test
     print("Loading dataset...")

@@ -14,42 +14,44 @@ from model.twostage import ContextTransformer, DetailTransformer
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    ctx_config = Config.load("configs/context_notraj.json")
-    det_config = Config.load("configs/detail_notraj.json")
+    dset_config = Config.load("configs/dataset.json")
+    ctx_config = Config.load("configs/context_short.json")
+    det_config = Config.load("configs/detail_short.json")
 
     # dataset - test
     print("Loading dataset...")
-    dataset    = MotionDataset(train=False, config=ctx_config)
+    dataset    = MotionDataset(train=False, config=dset_config)
     dataloader = DataLoader(dataset, batch_size=ctx_config.batch_size, shuffle=False)
-
-    test_mean, test_std = dataset.test_statistics()
-    test_mean, test_std = test_mean.to(device), test_std.to(device)
 
     # dataset - context
     ctx_dataset = MotionDataset(train=True, config=ctx_config)
     skeleton    = ctx_dataset.skeleton
     v_forward   = torch.from_numpy(ctx_config.v_forward).to(device)
 
+    test_mean, test_std = ctx_dataset.test_statistics()
+    test_mean, test_std = test_mean.to(device), test_std.to(device)
+
     motion_mean, motion_std = ctx_dataset.motion_statistics()
     motion_mean, motion_std = motion_mean.to(device), motion_std.to(device)
 
-    # traj_mean, traj_std = ctx_dataset.traj_statistics()
-    # traj_mean, traj_std = traj_mean.to(device), traj_std.to(device)
+    traj_mean, traj_std = ctx_dataset.traj_statistics()
+    traj_mean, traj_std = traj_mean.to(device), traj_std.to(device)
 
     # model
     print("Initializing model...")
-    ctx_model = ContextTransformer(len(motion_mean), ctx_config).to(device)
-    # ctx_model = ContextTransformer(len(motion_mean), ctx_config, len(traj_mean)).to(device)
+    # ctx_model = ContextTransformer(len(motion_mean), ctx_config).to(device)
+    ctx_model = ContextTransformer(len(motion_mean), ctx_config, len(traj_mean)).to(device)
     utils.load_model(ctx_model, ctx_config)
     ctx_model.eval()
 
-    det_model = DetailTransformer(len(motion_mean), det_config).to(device)
-    # det_model = DetailTransformer(len(motion_mean), det_config, len(traj_mean)).to(device)
+    # det_model = DetailTransformer(len(motion_mean), det_config).to(device)
+    det_model = DetailTransformer(len(motion_mean), det_config, len(traj_mean)).to(device)
     utils.load_model(det_model, det_config)
     det_model.eval()
 
     # evaluation
-    transition = [5, 15, 30, 45, 60, 90]
+    transition = [5, 15, 30, 45, 60, 90, 105, 120, 135, 150, 165, 180]
+    # transition = [105, 120, 135, 150, 165, 180]
     for t in transition:
         total_len = ctx_config.context_frames + t + 1
             
@@ -76,11 +78,15 @@ if __name__ == "__main__":
                 """ 2. Forward """
                 # forward
                 motion = (GT_motion - motion_mean) / motion_std
-                # traj   = (GT_traj - traj_mean) / traj_std
-                pred_motion, mask = ctx_model.forward(motion, ratio_constrained=0.0)
-                # pred_motion, mask = ctx_model.forward(motion, traj=traj ratio_constrained=0.0)
-                pred_motion, _    = det_model.forward(pred_motion, mask)
-                # pred_motion, _    = det_model.forward(pred_motion, mask, traj=traj)
+                traj   = (GT_traj - traj_mean) / traj_std
+
+                # use traj
+                pred_motion, mask = ctx_model.forward(motion, traj=traj, ratio_constrained=0.0)
+                pred_motion, _    = det_model.forward(pred_motion, mask, traj=traj)
+
+                # no use traj
+                # pred_motion, mask = ctx_model.forward(motion, ratio_constrained=0.0)
+                # pred_motion, _    = det_model.forward(pred_motion, mask)
                 pred_motion = pred_motion * motion_std + motion_mean
 
                 # trajectory
