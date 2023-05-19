@@ -29,7 +29,7 @@ def load_latest_ckpt(model, optim, config, scheduler=None):
     ckpt_list = sorted(ckpt_list)
     if len(ckpt_list) > 0:
         ckpt_path = os.path.join(config.save_dir, ckpt_list[-1])
-        ckpt = torch.load(ckpt_path)
+        ckpt = torch.load(ckpt_path, map_location="cuda:0")
         model.load_state_dict(ckpt["model"])
         optim.load_state_dict(ckpt["optim"])
         epoch = ckpt["epoch"]

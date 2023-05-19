@@ -74,8 +74,6 @@ if __name__ == "__main__":
                     end_frame = start_frame + (config.context_frames-1) + random.randint(config.min_transition, config.max_transition)
                     constrained = False
                 
-                print(start_frame, end_frame)
-                
                 # align
                 R_diff, p_diff = utils.get_align_Rp(output_motion, start_frame + (config.context_frames-1), v_forward)
                 aligned_motion = utils.align_motion(output_motion, R_diff, p_diff)

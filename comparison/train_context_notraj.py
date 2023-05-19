@@ -22,7 +22,7 @@ from utility import utils
 if __name__ == "__main__":
     # initial settings
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = Config.load("configs/context_notraj.json")
+    config = Config.load("configs/context_notraj_short.json")
     util.seed()
 
     # dataset

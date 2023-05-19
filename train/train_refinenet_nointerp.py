@@ -21,7 +21,7 @@ from utility import utils
 
 if __name__ == "__main__":
     # initial settings
-    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     kf_config = Config.load("configs/keyframenet.json")
     config = Config.load("configs/refinenet_nope_nointerp.json")
     util.seed()

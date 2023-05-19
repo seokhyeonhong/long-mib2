@@ -22,7 +22,7 @@ from utility import utils
 if __name__ == "__main__":
     # initial settings
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = Config.load("configs/detail_notraj.json")
+    config = Config.load("configs/detail_notraj_short.json")
     util.seed()
 
     # dataset
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     init_epoch, iter = utils.load_latest_ckpt(det_model, optim, config)
     init_iter = iter
 
-    ctx_config = Config.load("configs/context_notraj.json")
+    ctx_config = Config.load("configs/context_notraj_short.json")
     ctx_model = ContextTransformer(len(motion_mean), config).to(device)
     utils.load_model(ctx_model, ctx_config)
     ctx_model.eval()
