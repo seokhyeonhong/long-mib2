@@ -16,8 +16,8 @@ from model.twostage import ContextTransformer, DetailTransformer
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dset_config = Config.load("configs/dataset.json")
-    ctx_config = Config.load("configs/context_notraj_short.json")
-    det_config = Config.load("configs/detail_notraj_short.json")
+    ctx_config = Config.load("configs/context_short.json")
+    det_config = Config.load("configs/detail_short.json")
 
     # dataset - test
     print("Loading dataset...")
@@ -35,18 +35,18 @@ if __name__ == "__main__":
     motion_mean, motion_std = ctx_dataset.motion_statistics()
     motion_mean, motion_std = motion_mean.to(device), motion_std.to(device)
 
-    # traj_mean, traj_std = ctx_dataset.traj_statistics()
-    # traj_mean, traj_std = traj_mean.to(device), traj_std.to(device)
+    traj_mean, traj_std = ctx_dataset.traj_statistics()
+    traj_mean, traj_std = traj_mean.to(device), traj_std.to(device)
 
     # model
     print("Initializing model...")
-    ctx_model = ContextTransformer(len(motion_mean), ctx_config).to(device)
-    # ctx_model = ContextTransformer(len(motion_mean), ctx_config, len(traj_mean)).to(device)
+    # ctx_model = ContextTransformer(len(motion_mean), ctx_config).to(device)
+    ctx_model = ContextTransformer(len(motion_mean), ctx_config, len(traj_mean)).to(device)
     utils.load_model(ctx_model, ctx_config)
     ctx_model.eval()
 
-    det_model = DetailTransformer(len(motion_mean), det_config).to(device)
-    # det_model = DetailTransformer(len(motion_mean), det_config, len(traj_mean)).to(device)
+    # det_model = DetailTransformer(len(motion_mean), det_config).to(device)
+    det_model = DetailTransformer(len(motion_mean), det_config, len(traj_mean)).to(device)
     utils.load_model(det_model, det_config)
     det_model.eval()
 
@@ -72,24 +72,24 @@ if __name__ == "__main__":
                 GT_global_Q = rotation.R6_to_Q(GT_global_R6)
 
                 # add to list
-                GT_global_ps.append(GT_global_p)
-                GT_global_Qs.append(GT_global_Q)
-                GT_trajs.append(GT_traj)
+                GT_global_ps.append(GT_global_p[:, ctx_config.context_frames:-1, :])
+                GT_global_Qs.append(GT_global_Q[:, ctx_config.context_frames:-1, :])
+                GT_trajs.append(GT_traj[:, ctx_config.context_frames:-1, :])
 
                 """ 2. Forward """
                 # forward
                 motion = (GT_motion - motion_mean) / motion_std
-                # traj   = (GT_traj - traj_mean) / traj_std
+                traj   = (GT_traj - traj_mean) / traj_std
 
                 # use traj
-                # pred_motion, mask = ctx_model.forward(motion, traj=traj, ratio_constrained=0.0)
-                # pred_motion, _    = det_model.forward(pred_motion, mask, traj=traj)
-                # pred_motion = pred_motion * motion_std + motion_mean
+                pred_motion, mask = ctx_model.forward(motion, traj=traj, ratio_constrained=0.0)
+                pred_motion, _    = det_model.forward(pred_motion, mask, traj=traj)
+                pred_motion = pred_motion * motion_std + motion_mean
 
                 # no use traj
-                pred_motion, mask = ctx_model.forward(motion, ratio_constrained=0.0)
-                pred_motion, _    = det_model.forward(pred_motion, mask)
-                pred_motion = pred_motion * motion_std + motion_mean
+                # pred_motion, mask = ctx_model.forward(motion, ratio_constrained=0.0)
+                # pred_motion, _    = det_model.forward(pred_motion, mask)
+                # pred_motion = pred_motion * motion_std + motion_mean
 
                 # trajectory
                 pred_traj = utils.get_trajectory(pred_motion, v_forward)
@@ -102,28 +102,31 @@ if __name__ == "__main__":
                 pred_global_Q = rotation.R6_to_Q(pred_global_R6)
 
                 # add to list
-                pred_global_ps.append(pred_global_p)
-                pred_global_Qs.append(pred_global_Q)
-                pred_trajs.append(pred_traj)
+                pred_global_ps.append(pred_global_p[:, ctx_config.context_frames:-1, :])
+                pred_global_Qs.append(pred_global_Q[:, ctx_config.context_frames:-1, :])
+                pred_trajs.append(pred_traj[:, ctx_config.context_frames:-1, :])
             
-            GT_global_p = torch.cat(GT_global_ps, dim=0).reshape(len(dataset), total_len, -1)
-            GT_global_Q = torch.cat(GT_global_Qs, dim=0).reshape(len(dataset), total_len, -1)
-            GT_traj     = torch.cat(GT_trajs, dim=0).reshape(len(dataset), total_len, -1)
+            GT_global_p = torch.cat(GT_global_ps, dim=0).reshape(len(dataset), t, -1)
+            GT_global_Q = torch.cat(GT_global_Qs, dim=0).reshape(len(dataset), t, -1)
+            GT_traj     = torch.cat(GT_trajs, dim=0).reshape(len(dataset), t, -1)
 
-            pred_global_p = torch.cat(pred_global_ps, dim=0).reshape(len(dataset), total_len, -1)
-            pred_global_Q = torch.cat(pred_global_Qs, dim=0).reshape(len(dataset), total_len, -1)
-            pred_traj     = torch.cat(pred_trajs, dim=0).reshape(len(dataset), total_len, -1)
+            pred_global_p = torch.cat(pred_global_ps, dim=0).reshape(len(dataset), t, -1)
+            pred_global_Q = torch.cat(pred_global_Qs, dim=0).reshape(len(dataset), t, -1)
+            pred_traj     = torch.cat(pred_trajs, dim=0).reshape(len(dataset), t, -1)
             
             """ 3. Evaluation """
             # L2P
+            GT_global_p = GT_global_p.transpose(1, 2)
+            pred_global_p = pred_global_p.transpose(1, 2)
             norm_GT_p   = (GT_global_p - test_mean) / test_std
             norm_pred_p = (pred_global_p - test_mean) / test_std
-            l2p = torch.mean(torch.norm(norm_GT_p - norm_pred_p, dim=-1)).item()
+            l2p = torch.mean(torch.sqrt(torch.sum((pred_global_p - GT_global_p)**2, dim=1))).item()
 
             # L2Q
-            GT_global_Q   = utils.align_Q(GT_global_Q)
-            pred_global_Q = utils.align_Q(pred_global_Q)
-            l2q = torch.mean(torch.norm(GT_global_Q - pred_global_Q, dim=-1)).item()
+            B, T, D = GT_global_Q.shape
+            GT_global_Q   = GT_global_Q.reshape(B, T, -1, 4)
+            pred_global_Q = pred_global_Q.reshape(B, T, -1, 4)
+            l2q = torch.mean(torch.sqrt(torch.sum((pred_global_Q - GT_global_Q)**2, dim=(2, 3)))).item()
 
             # NPSS
             B, T, J, _ = GT_global_Q.shape
@@ -132,7 +135,7 @@ if __name__ == "__main__":
             npss = benchmark.NPSS(pred_global_Q, GT_global_Q)
 
             # L2T
-            l2t = torch.mean(torch.norm(GT_traj - pred_traj, dim=-1)).item()
+            l2t = torch.mean(torch.sqrt(torch.sum((GT_traj - pred_traj)**2, dim=1))).item()
 
             print("======Transition: {}======".format(t))
             print("L2P: {:.4f}, L2Q: {:.4f}, L2T: {:.4f}, NPSS: {:.4f}".format(l2p, l2q, l2t, npss))

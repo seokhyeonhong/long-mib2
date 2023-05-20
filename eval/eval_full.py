@@ -92,7 +92,7 @@ if __name__ == "__main__":
                     keyframes = [ref_config.context_frames - 1]
                     transition_start = ref_config.context_frames
                     while transition_start < T:
-                        transition_end = min(transition_start + 15, T-1)
+                        transition_end = min(transition_start + ref_config.max_transition, T-1)
                         # transition_end = min(transition_start + ref_config.max_transition, T-1)
                         if transition_end == T-1:
                             keyframes.append(transition_end)
@@ -143,14 +143,17 @@ if __name__ == "__main__":
             
             """ 3. Evaluation """
             # L2P
+            GT_global_p = GT_global_p.transpose(1, 2)
+            pred_global_p = pred_global_p.transpose(1, 2)
             norm_GT_p   = (GT_global_p - test_mean) / test_std
             norm_pred_p = (pred_global_p - test_mean) / test_std
-            l2p = torch.mean(torch.norm(norm_GT_p - norm_pred_p, dim=-1)).item()
+            l2p = torch.mean(torch.sqrt(torch.sum((pred_global_p - GT_global_p)**2, dim=1))).item()
 
             # L2Q
-            GT_global_Q = utils.align_Q(GT_global_Q)
-            pred_global_Q = utils.align_Q(pred_global_Q)
-            l2q = torch.mean(torch.norm(GT_global_Q - pred_global_Q, dim=-1)).item()
+            B, T, D = GT_global_Q.shape
+            GT_global_Q   = GT_global_Q.reshape(B, T, -1, 4)
+            pred_global_Q = pred_global_Q.reshape(B, T, -1, 4)
+            l2q = torch.mean(torch.sqrt(torch.sum((pred_global_Q - GT_global_Q)**2, dim=(2, 3)))).item()
 
             # NPSS
             B, T, J, _ = GT_global_Q.shape
@@ -159,7 +162,7 @@ if __name__ == "__main__":
             npss = benchmark.NPSS(pred_global_Q, GT_global_Q)
 
             # L2T
-            l2t = torch.mean(torch.norm(GT_traj - pred_traj, dim=-1)).item()
+            l2t = torch.mean(torch.sqrt(torch.sum((GT_traj - pred_traj)**2, dim=1))).item()
 
             print("======Transition: {}======".format(t))
-            print("L2P: {:.4f}, L2Q: {:.4f}, NPSS: {:.4f}, L2T: {:.4f}".format(l2p, l2q, npss, l2t))
+            print("L2P: {:.4f}, L2Q: {:.4f}, L2T: {:.4f}, NPSS: {:.4f}".format(l2p, l2q, l2t, npss))

@@ -267,8 +267,8 @@ def align_Q(Q):
     B, T, D = Q.shape
     Q = Q.reshape(B, T, -1, 4)
 
-    w_positive = (Q[..., 0:1] > 0).float()
-    Q = Q * w_positive + (1 - w_positive) * (-Q)
+    # w_positive = (Q[..., 0:1] > 0).float()
+    # Q = Q * w_positive + (1 - w_positive) * (-Q)
 
     return Q
 

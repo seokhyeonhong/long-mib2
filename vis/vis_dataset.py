@@ -69,9 +69,6 @@ if __name__ == "__main__":
         GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
         GT_local_R = rotation.R6_to_R(GT_local_R6.reshape(B, T, -1, 6))
 
-        # print(F.normalize(torch.matmul(GT_local_R[:, :, 0], v_forward) * torchconst.XZ(device), dim=-1))
-        # breakpoint()
-
         """ 2. Animation """
         motion = Motion.from_torch(skeleton, GT_local_R.reshape(B*T, -1, 3, 3), GT_root_p.reshape(B*T, 3))
 

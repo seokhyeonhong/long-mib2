@@ -21,7 +21,7 @@
     "val_interval": 1000,
 
     "batch_size": 64,
-    "epochs": 2000,
+    "epochs": 3000,
     "lr": 1e-5,
     "warmup_iters": 8000,
     "receptive_size": 31,
@@ -39,7 +39,8 @@
     "d_ff": 2048,
     "pre_layernorm": true,
 
-    "weight_pose": 1.0,
+    "weight_rot": 1.0,
+    "weight_pos": 1.0,
     "weight_vel": 0.5,
     "weight_traj": 0.5,
     "weight_contact": 0.1,

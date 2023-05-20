@@ -43,22 +43,22 @@ def NPSS(pred, GT):
     pred_power = torch.square(pred_fourier_coeffs)
 
     # sum of powers over time
-    GT_power_sum = torch.sum(GT_power, dim=1)
-    pred_power_sum = torch.sum(pred_power, dim=1)
+    GT_total_power = torch.sum(GT_power, dim=1)
+    pred_total_power = torch.sum(pred_power, dim=1)
 
     # normalize powers with total
-    GT_power_norm = GT_power / GT_power_sum.unsqueeze(1)
-    pred_power_norm = pred_power / pred_power_sum.unsqueeze(1)
+    GT_norm_power = GT_power / GT_total_power[:, None, :]
+    pred_norm_power = pred_power / pred_total_power[:, None, :]
 
     # cumulative sum over time
-    GT_power_cumsum = torch.cumsum(GT_power_norm, dim=1)
-    pred_power_cumsum = torch.cumsum(pred_power_norm, dim=1)
+    GT_cdf_power = torch.cumsum(GT_norm_power, dim=1)
+    pred_cdf_power = torch.cumsum(pred_norm_power, dim=1)
 
     # earth mover distance
-    emd = torch.norm((pred_power_cumsum - GT_power_cumsum), p=1, dim=1)
+    emd = torch.norm((pred_cdf_power - GT_cdf_power), p=1, dim=1)
 
     # weighted EMD
-    power_weighted_emd = torch.sum(emd * GT_power_sum) / torch.sum(GT_power_sum)
+    power_weighted_emd = torch.sum(emd * GT_total_power) / torch.sum(GT_total_power)
 
     return power_weighted_emd
 

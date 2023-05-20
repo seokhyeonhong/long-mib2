@@ -23,7 +23,7 @@ if __name__ == "__main__":
     # initial settings
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     kf_config = Config.load("configs/keyframenet.json")
-    config = Config.load("configs/refinenet_nope.json")
+    config = Config.load("configs/refinenet_local_nope.json")
     util.seed()
 
     # dataset

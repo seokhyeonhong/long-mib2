@@ -92,7 +92,7 @@ class MotionDataset(Dataset):
         mean = torch.mean(global_ps, dim=(0, 1))
         std = torch.std(global_ps, dim=(0, 1)) + 1e-8
 
-        return mean, std
+        return mean[None, :, None], std[None, :, None]
 
 class KeyframeDataset(Dataset):
     """

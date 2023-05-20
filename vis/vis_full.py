@@ -24,7 +24,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     kf_config  = Config.load("configs/keyframenet.json")
     # ref_config = Config.load("configs/refinenet.json")
-    ref_config = Config.load("configs/refinenet_nope_fromgt.json")
+    ref_config = Config.load("configs/refinenet_local_nope.json")
 
     # dataset - test
     print("Loading dataset...")
@@ -84,7 +84,7 @@ if __name__ == "__main__":
                 keyframes = [ref_config.context_frames - 1]
                 transition_start = ref_config.context_frames
                 while transition_start < T:
-                    transition_end = min(transition_start + 30, T-1)
+                    transition_end = min(transition_start + ref_config.max_transition, T-1)
                     if transition_end == T-1:
                         keyframes.append(transition_end)
                         break
@@ -95,12 +95,15 @@ if __name__ == "__main__":
                     keyframes.append(top_keyframe)
                     transition_start = top_keyframe + 1
                 
-                # forward
+                # forward - interp
                 interp_motion = ref_net.get_interpolated_motion(kf_motion[b:b+1], keyframes)
                 motion = (interp_motion - motion_mean) / motion_std
+
+                # forward - nointerp
+                # motion = (kf_motion[b:b+1] - motion_mean) / motion_std
+
                 pred_motion, pred_contact = ref_net.forward(motion, traj[b:b+1], keyframes)
                 pred_motion = pred_motion * motion_std + motion_mean
-                
                 interp_motions.append(interp_motion)
                 pred_motions.append(pred_motion)
             
