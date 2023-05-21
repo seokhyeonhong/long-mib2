@@ -3,6 +3,8 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 
+import random
+
 from pymovis.ops import motionops, rotation, mathops
 from pymovis.utils import torchconst
 
@@ -134,7 +136,7 @@ def get_velocity_and_contact(global_p, joint_ids, threshold):
 def get_interpolated_trajectory(traj, context_frames):
     # B, T, _ = traj.shape
     zeros = torch.zeros_like(traj[:, :, 0:1])
-    traj = torch.cat([traj[:, :, (0, 1)], zeros, traj[:, :, (2, 3)]], dim=-1)
+    traj = torch.cat([traj[:, :, (0, 1, 2)], zeros, traj[:, :, (3,)]], dim=-1)
     res = traj.clone()
 
     traj_from = traj[:, context_frames-1].unsqueeze(1)
@@ -155,7 +157,7 @@ def get_interpolated_trajectory(traj, context_frames):
     fwd = torch.matmul(R, fwd_from.unsqueeze(-1)).squeeze(-1)
     res[:, context_frames-1:, 2:] = fwd
     
-    return res[..., (0, 1, 3, 4)]
+    return res[..., (0, 1, 2, 4)]
 
 def get_interpolated_motion(motion, context_frames):
     B, T, D = motion.shape
@@ -188,6 +190,17 @@ def get_interpolated_motion(motion, context_frames):
     
     res[:, context_frames-1:, :] = torch.cat([local_R6, root_p], dim=-1)
     return res
+
+def get_modified_trajectory(traj, context_frames, min_scale=0.95, max_scale=1.05):
+    B, T, D = traj.shape
+
+    res = traj.clone()
+
+    for t in range(context_frames, T):
+        res[:, t, 0:2] = random.uniform(min_scale, max_scale) * (traj[:, t, 0:2] - traj[:, t-1, 0:2]) + res[:, t-1, 0:2]
+    
+    return res
+
 
 def get_align_Rp(motion, align_at, v_forward):
     """

@@ -83,8 +83,8 @@ if __name__ == "__main__":
             _, GT_global_p = utils.get_motion(GT_motion, skeleton)
 
             # Optional: Interpolate traj
-            # GT_traj = utils.get_interpolated_trajectory(GT_traj, ref_config.context_frames)
-            GT_traj[:, ref_config.context_frames:-1, 0:2] += torch.randn_like(GT_traj[:, ref_config.context_frames:-1, 0:2]) * 0.1
+            GT_traj = utils.get_modified_trajectory(GT_traj, ref_config.context_frames, min_scale=2, max_scale=2)
+            GT_motion[:, -1, (-3, -1)] = GT_traj[:, -1, 0:2]
 
             # motion
             GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
@@ -166,10 +166,10 @@ if __name__ == "__main__":
             ref_global_p = ref_global_p[:, ref_config.context_frames:-1]
             det_global_p = det_global_p[:, ref_config.context_frames:-1]
 
-            B, T = GT_global_p.shape[:2]
-            GT_global_p = GT_global_p.reshape(B, T, -1).transpose(1, 2)
-            ref_global_p = ref_global_p.reshape(B, T, -1).transpose(1, 2)
-            det_global_p = det_global_p.reshape(B, T, -1).transpose(1, 2)
+            b, t = GT_global_p.shape[:2]
+            GT_global_p = GT_global_p.reshape(b, t, -1).transpose(1, 2)
+            ref_global_p = ref_global_p.reshape(b, t, -1).transpose(1, 2)
+            det_global_p = det_global_p.reshape(b, t, -1).transpose(1, 2)
 
             norm_GT = (GT_global_p - test_mean) / test_std
             norm_ref = (ref_global_p - test_mean) / test_std
@@ -179,5 +179,5 @@ if __name__ == "__main__":
             l2p_det = torch.mean(torch.sqrt(torch.sum((norm_det - norm_GT) ** 2, dim=1)), dim=-1)
 
             app_manager = AppManager()
-            app = TripletMotionApp(GT_motion, ref_motion, det_motion, ybot.model(), T, l2ps=(l2p_ref, l2p_det))
+            app = TripletMotionApp(GT_motion, ref_motion, det_motion, ybot.model(), T, l2ps=(l2p_ref, l2p_det), traj=GT_traj.reshape(-1, 4).cpu().numpy())
             app_manager.run(app)

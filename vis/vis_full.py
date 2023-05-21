@@ -24,7 +24,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     kf_config  = Config.load("configs/keyframenet.json")
     # ref_config = Config.load("configs/refinenet.json")
-    ref_config = Config.load("configs/refinenet_local_nope.json")
+    ref_config = Config.load("configs/refinenet_nope.json")
 
     # dataset - test
     print("Loading dataset...")
@@ -64,6 +64,9 @@ if __name__ == "__main__":
             B, T, D = GT_motion.shape
             GT_motion = GT_motion.to(device)
             GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
+
+            # Optional: Interpolate traj
+            GT_traj = utils.get_interpolated_trajectory(GT_traj, ref_config.context_frames)
 
             # motion
             GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
@@ -136,5 +139,5 @@ if __name__ == "__main__":
                     total_kfs.append(k + b*T)
 
             app_manager = AppManager()
-            app = KeyframeApp(interp_motion, pred_motion, ybot.model(), T, total_kfs)
+            app = KeyframeApp(GT_motion, pred_motion, ybot.model(), T, total_kfs)
             app_manager.run(app)
