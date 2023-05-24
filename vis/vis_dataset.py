@@ -52,7 +52,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     config = Config.load("configs/dataset.json")
 
-    dataset = MotionDataset(train=False, config=config)
+    dataset = MotionDataset(train=True, config=config)
     v_forward = torch.from_numpy(config.v_forward).to(device)
     dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
     skeleton = dataset.skeleton

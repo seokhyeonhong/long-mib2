@@ -195,6 +195,7 @@ class TripletMotionApp(MotionApp):
         self.show_motion1 = True
         self.show_motion2 = True
         self.show_skeleton = False
+        self.show_constrained = False
 
         # motion and model
         self.GT_motion     = GT_motion
@@ -206,11 +207,13 @@ class TripletMotionApp(MotionApp):
         self.model1  = copy.deepcopy(ybot_model)
         self.model1.set_source_skeleton(motion1.skeleton, YBOT_FBX_DICT)
         self.model1.meshes[0].materials[0].albedo = glm.vec3(0.8)
+        self.model1.meshes[1].materials[0].albedo = glm.vec3(0.2)
 
         self.motion2 = motion2
         self.model2  = copy.deepcopy(ybot_model)
         self.model2.set_source_skeleton(motion2.skeleton, YBOT_FBX_DICT)
-        self.model2.meshes[0].materials[0].albedo = glm.vec3(1.0, 0.2, 0.2)
+        self.model2.meshes[0].materials[0].albedo = glm.vec3(0.8, 0.1, 0.1)
+        self.model2.meshes[1].materials[0].albedo = glm.vec3(0.3, 0.1, 0.1)
 
         # move pred motions
         # for pose in self.motion1.poses:
@@ -244,15 +247,30 @@ class TripletMotionApp(MotionApp):
 
         if self.show_GT:
             self.GT_model.set_pose_by_source(self.GT_motion.poses[self.frame])
-            Render.model(self.GT_model).draw()
+            Render.model(self.GT_model).set_all_alphas(1.0).draw()
+            if self.show_constrained:
+                # self.GT_model.set_pose_by_source(self.GT_motion.poses[ith_motion * self.frames_per_motion])
+                # Render.model(self.GT_model).set_all_alphas(0.5).draw()
+                self.GT_model.set_pose_by_source(self.GT_motion.poses[(ith_motion+1) * self.frames_per_motion - 1])
+                Render.model(self.GT_model).set_all_alphas(0.5).draw()
 
         if self.show_motion1:
             self.model1.set_pose_by_source(self.motion1.poses[self.frame])
-            Render.model(self.model1).draw()
+            Render.model(self.model1).set_all_alphas(1.0).draw()
+            # if self.show_constrained:
+            #     # self.model1.set_pose_by_source(self.motion1.poses[ith_motion * self.frames_per_motion])
+            #     # Render.model(self.model1).set_all_alphas(0.5).draw()
+            #     self.model1.set_pose_by_source(self.motion1.poses[(ith_motion+1) * self.frames_per_motion - 1])
+            #     Render.model(self.model1).set_all_alphas(0.5).draw()
         
         if self.show_motion2:
             self.model2.set_pose_by_source(self.motion2.poses[self.frame])
-            Render.model(self.model2).draw()
+            Render.model(self.model2).set_all_alphas(1.0).draw()
+            # if self.show_constrained:
+            #     # self.model2.set_pose_by_source(self.motion2.poses[ith_motion * self.frames_per_motion])
+            #     # Render.model(self.model2).set_all_alphas(0.5).draw()
+            #     self.model2.set_pose_by_source(self.motion2.poses[(ith_motion+1) * self.frames_per_motion - 1])
+            #     Render.model(self.model2).set_all_alphas(0.5).draw()
         
         if self.show_traj and self.traj is not None:
             for t in range(self.frames_per_motion):
@@ -292,9 +310,11 @@ class TripletMotionApp(MotionApp):
             self.show_motion1 = not self.show_motion1
         elif key == glfw.KEY_E and action == glfw.PRESS:
             self.show_motion2 = not self.show_motion2
+        elif key == glfw.KEY_R and action == glfw.PRESS:
+            self.show_traj = not self.show_traj
         elif key == glfw.KEY_S and action == glfw.PRESS:
             self.show_skeleton = not self.show_skeleton
-        elif key == glfw.KEY_P and action == glfw.PRESS:
-            self.show_traj = not self.show_traj
+        elif key == glfw.KEY_D and action == glfw.PRESS:
+            self.show_constrained = not self.show_constrained
         elif key == glfw.KEY_Z and action == glfw.PRESS:
             self.show_guide = not self.show_guide

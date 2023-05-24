@@ -83,7 +83,7 @@ if __name__ == "__main__":
             _, GT_global_p = utils.get_motion(GT_motion, skeleton)
 
             # Optional: Interpolate traj
-            GT_traj = utils.get_modified_trajectory(GT_traj, ref_config.context_frames, min_scale=2, max_scale=2)
+            GT_traj = utils.get_modified_trajectory(GT_traj, ref_config.context_frames, min_scale=1.5, max_scale=1.5)
             GT_motion[:, -1, (-3, -1)] = GT_traj[:, -1, 0:2]
 
             # motion

@@ -12,10 +12,10 @@
     "contact_joint_names": ["LeftFoot", "LeftToeBase", "RightFoot", "RightToeBase"],
     "contact_vel_threshold": 2e-4,
 
-    "log_dir": "log/RefineNet-NoPE",
+    "log_dir": "log/RefineNet-NoPE-Residual",
     "log_interval": 100,
 
-    "save_dir": "save/RefineNet-NoPE",
+    "save_dir": "save/RefineNet-NoPE-Residual",
     "save_interval": 10000,
 
     "val_interval": 1000,
@@ -40,7 +40,8 @@
 
     "weight_rot": 1.0,
     "weight_pos": 2.0,
-    "weight_traj": 0.1,
-    "weight_contact": 0.05,
-    "weight_foot": 0.05
+    "weight_vel": 0.5,
+    "weight_traj": 0.2,
+    "weight_contact": 0.1,
+    "weight_foot": 0.1
 }

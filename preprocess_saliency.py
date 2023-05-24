@@ -176,9 +176,10 @@ def generate_dataset(config, train=True):
         scores = torch.zeros(T - config.context_frames + 1)
         for k in range(3, T - config.context_frames + 1):
             kfs = keyframes[k]
-            scores[kfs] += 1
+            scores[kfs] += (1 / (k - 2))    
 
         # re-scale scores to [0, 1]
+        scores = torch.softmax(scores, dim=-1)
         scores = (scores - torch.min(scores)) / (torch.max(scores) - torch.min(scores))
         scores = scores.reshape(-1, 1)
 
@@ -190,7 +191,8 @@ def generate_dataset(config, train=True):
         save_features.append(feature)
 
     save_features = np.stack(save_features, axis=0)
-    np.save(config.keyframe_trainset_npy if train else config.keyframe_testset_npy, save_features)
+    # np.save(config.keyframe_trainset_npy if train else config.keyframe_testset_npy, save_features)
+    np.save("test.npy", save_features)
     print(f"save_features.shape: {save_features.shape} saved to {config.keyframe_trainset_npy if train else config.keyframe_testset_npy}")
 
 def main():
@@ -199,8 +201,8 @@ def main():
     # get_keyframes(config, train=True)
     generate_dataset(config, train=True)
 
-    get_keyframes(config, train=False)
-    generate_dataset(config, train=False)
+    # get_keyframes(config, train=False)
+    # generate_dataset(config, train=False)
 
 if __name__ == "__main__":
     main()
