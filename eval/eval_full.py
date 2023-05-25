@@ -17,7 +17,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dset_config = Config.load("configs/dataset.json")
     kf_config  = Config.load("configs/keyframenet.json")
-    ref_config = Config.load("configs/refinenet_nope.json")
+    ref_config = Config.load("configs/refinenet_nope_fromgt.json")
 
     # dataset - test
     print("Loading dataset...")
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     kf_net.eval()
 
     ref_net = RefineNet(len(motion_mean), len(traj_mean), len(feet_ids), ref_config, local_attn=ref_config.local_attn, use_pe=ref_config.use_pe).to(device)
-    utils.load_model(ref_net, ref_config, 600000)
+    utils.load_model(ref_net, ref_config)
     ref_net.eval()
 
     # evaluation
@@ -160,8 +160,8 @@ if __name__ == "__main__":
 
             # L2Q
             B, T, D = GT_global_Q.shape
-            GT_global_Q   = GT_global_Q.reshape(B, T, -1, 4)
-            pred_global_Q = pred_global_Q.reshape(B, T, -1, 4)
+            GT_global_Q   = utils.remove_Q_discontinuities(GT_global_Q.reshape(B, T, -1, 4))
+            pred_global_Q = utils.remove_Q_discontinuities(pred_global_Q.reshape(B, T, -1, 4))
             l2q = torch.mean(torch.sqrt(torch.sum((pred_global_Q - GT_global_Q)**2, dim=(2, 3)))).item()
 
             # NPSS

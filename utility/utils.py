@@ -285,6 +285,17 @@ def align_Q(Q):
 
     return Q
 
+def remove_Q_discontinuities(Q):
+    B, T, J, D = Q.shape
+    Q_inv = -Q
+
+    for i in range(1, T):
+        replace_mask = torch.sum(Q[:, i-1:i] * Q[:, i:i+1], dim=-1) < torch.sum(Q[:, i-1:i] * Q_inv[:, i:i+1], dim=-1)
+        replace_mask = replace_mask[..., None].float()
+        Q[:, i:i+1] = replace_mask * Q_inv[:, i:i+1] + (1.0 - replace_mask) * Q[:, i:i+1]
+
+    return Q
+
 """ Loss functions """
 def kl_loss(mean, logvar):
     # mean: (B, T, D)

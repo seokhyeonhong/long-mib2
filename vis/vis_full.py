@@ -51,7 +51,7 @@ if __name__ == "__main__":
 
     # ref_net = RefineNet(len(motion_mean), len(traj_mean), len(feet_ids), ref_config, local_attn=False).to(device)
     ref_net = RefineNet(len(motion_mean), len(traj_mean), len(feet_ids), ref_config, local_attn=ref_config.local_attn, use_pe=ref_config.use_pe).to(device)
-    utils.load_model(ref_net, ref_config)
+    utils.load_model(ref_net, ref_config, 750000)
     ref_net.eval()
 
     # character
@@ -61,6 +61,7 @@ if __name__ == "__main__":
     with torch.no_grad():
         for GT_motion in tqdm(dataloader):
             """ 1. GT motion """
+            GT_motion = GT_motion[:, :26]
             B, T, D = GT_motion.shape
             GT_motion = GT_motion.to(device)
             GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
@@ -98,6 +99,7 @@ if __name__ == "__main__":
                     keyframes.append(top_keyframe)
                     transition_start = top_keyframe + 1
                 
+                print(keyframes)
                 # forward - interp
                 interp_motion = ref_net.get_interpolated_motion(kf_motion[b:b+1], keyframes)
                 motion = (interp_motion - motion_mean) / motion_std

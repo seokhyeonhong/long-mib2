@@ -310,10 +310,6 @@ class RefineNetResidual(nn.Module):
         # original motion
         original_x = interp_motion.detach().clone()
 
-        # reference frame for residual connection
-        ref_x = interp_motion[:, self.config.context_frames-1].unsqueeze(1).repeat(1, T, 1)
-        interp_motion = interp_motion - ref_x
-
         # mask
         batch_mask = self.get_mask_by_keyframe(interp_motion, keyframes)
         x = self.motion_encoder(torch.cat([interp_motion, traj, batch_mask], dim=-1))
@@ -340,7 +336,7 @@ class RefineNetResidual(nn.Module):
         x = self.decoder(x)
 
         # residual connection
-        x[..., :self.d_motion] = x[..., :self.d_motion] + ref_x
+        x[..., :self.d_motion] = x[..., :self.d_motion] + original_x
 
         # recover original motion
         x[:, :self.config.context_frames, :self.d_motion] = original_x[:, :self.config.context_frames]

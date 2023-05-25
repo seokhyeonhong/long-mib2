@@ -29,7 +29,7 @@ if __name__ == "__main__":
     test_mean, test_std = test_mean.to(device), test_std.to(device)
 
     # evaluation
-    transition = [5, 15, 30, 45, 60, 90, 105, 120, 135, 150, 165, 180]
+    transition = [5, 15, 30, 60, 90, 120, 150, 180]
     print("================================================")
     print("|Transition   |  L2P  |  L2Q  |  L2T  |  NPSS  |")
     print("================================================")
@@ -97,8 +97,9 @@ if __name__ == "__main__":
         l2p = torch.mean(torch.sqrt(torch.sum((interp_global_p - GT_global_p)**2, dim=1))).item()
 
         # L2Q
-        GT_global_Q     = utils.align_Q(GT_global_Q)
-        interp_global_Q = utils.align_Q(interp_global_Q)
+        B, T, D = GT_global_Q.shape
+        GT_global_Q   = utils.remove_Q_discontinuities(GT_global_Q.reshape(B, T, -1, 4))
+        interp_global_Q = utils.remove_Q_discontinuities(interp_global_Q.reshape(B, T, -1, 4))
         l2q = torch.mean(torch.sqrt(torch.sum((interp_global_Q - GT_global_Q)**2, dim=(2, 3)))).item()
 
         # NPSS
