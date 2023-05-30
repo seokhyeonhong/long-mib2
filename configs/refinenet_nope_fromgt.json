@@ -36,9 +36,8 @@
     "pre_layernorm": true,
 
     "weight_rot": 1.0,
-    "weight_pos": 1.0,
-    "weight_vel": 0.5,
-    "weight_traj": 0.5,
-    "weight_contact": 0.1,
-    "weight_foot": 0.1
+    "weight_pos": 2.0,
+    "weight_traj": 0.2,
+    "weight_contact": 0.05,
+    "weight_foot": 0.05
 }

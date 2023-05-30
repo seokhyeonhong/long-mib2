@@ -68,7 +68,6 @@ if __name__ == "__main__":
         "total":   0,
         "rot":     0,
         "pos":     0,
-        "vel":     0,
         "traj":    0,
         "contact": 0,
         "foot":    0,
@@ -110,13 +109,11 @@ if __name__ == "__main__":
             # loss
             loss_rot     = config.weight_rot     * utils.recon_loss(pred_local_R6[:, config.context_frames:-1], GT_local_R6[:, config.context_frames:-1])
             loss_pos     = config.weight_pos     * utils.recon_loss(pred_global_p[:, config.context_frames:-1], GT_global_p[:, config.context_frames:-1])
-            loss_vel     = config.weight_vel     * utils.recon_loss(pred_global_p[:, config.context_frames:] - pred_global_p[:, config.context_frames-1:-1],
-                                                                    GT_global_p[:, config.context_frames:] - GT_global_p[:, config.context_frames-1:-1])
             loss_traj    = config.weight_traj    * utils.traj_loss(pred_traj, GT_traj)
             loss_contact = config.weight_contact * utils.recon_loss(pred_contact[:, config.context_frames:-1], GT_contact[:, config.context_frames:-1])
             loss_foot    = config.weight_foot    * utils.foot_loss(pred_feet_v[:, config.context_frames:-1], pred_contact[:, config.context_frames:-1].detach())
 
-            loss = loss_rot + loss_pos + loss_vel + loss_traj + loss_contact + loss_foot
+            loss = loss_rot + loss_pos + loss_traj + loss_contact + loss_foot
 
             # backward
             optim.zero_grad()
@@ -127,7 +124,6 @@ if __name__ == "__main__":
             loss_dict["total"]   += loss.item()
             loss_dict["rot"]     += loss_rot.item()
             loss_dict["pos"]     += loss_pos.item()
-            loss_dict["vel"]     += loss_vel.item()
             loss_dict["traj"]    += loss_traj.item()
             loss_dict["contact"] += loss_contact.item()
             loss_dict["foot"]    += loss_foot.item()
@@ -144,7 +140,6 @@ if __name__ == "__main__":
                         "total":   0,
                         "rot":     0,
                         "pos":     0,
-                        "vel":     0,
                         "traj":    0,
                         "contact": 0,
                         "foot":    0,
@@ -181,18 +176,15 @@ if __name__ == "__main__":
                         loss_rot     = config.weight_rot     * utils.recon_loss(pred_local_R6[:, config.context_frames:-1], GT_local_R6[:, config.context_frames:-1])
                         loss_pos     = config.weight_pos     * utils.recon_loss(pred_global_p[:, config.context_frames:-1], GT_global_p[:, config.context_frames:-1])
                         loss_traj    = config.weight_traj    * utils.traj_loss(pred_traj[:, config.context_frames:-1], GT_traj[:, config.context_frames:-1])
-                        loss_vel     = config.weight_vel     * utils.recon_loss(pred_global_p[:, config.context_frames:] - pred_global_p[:, config.context_frames-1:-1],
-                                                                                GT_global_p[:, config.context_frames:] - GT_global_p[:, config.context_frames-1:-1])
                         loss_contact = config.weight_contact * utils.recon_loss(pred_contact[:, config.context_frames:-1], GT_contact[:, config.context_frames:-1])
                         loss_foot    = config.weight_foot    * utils.foot_loss(pred_feet_v[:, config.context_frames:-1], pred_contact[:, config.context_frames:-1].detach())
 
-                        loss = loss_rot + loss_pos + loss_vel + loss_traj + loss_contact + loss_foot
+                        loss = loss_rot + loss_pos + loss_traj + loss_contact + loss_foot
 
                         # log
                         val_loss_dict["total"]    += loss.item()
                         val_loss_dict["rot"]      += loss_rot.item()
                         val_loss_dict["pos"]      += loss_pos.item()
-                        val_loss_dict["vel"]      += loss_vel.item()
                         val_loss_dict["traj"]     += loss_traj.item()
                         val_loss_dict["contact"]  += loss_contact.item()
                         val_loss_dict["foot"]     += loss_foot.item()
