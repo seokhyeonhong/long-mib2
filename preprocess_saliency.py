@@ -136,6 +136,7 @@ def get_keyframes(config, train=True):
 
             # error between interpolated motion and GT motion
             error = torch.sum((global_p_approx - global_ps)**2, dim=-1)
+            breakpoint()
             error = torch.sum(error, dim=-1)
             error = torch.max(error, dim=-1)[0]
 
@@ -198,7 +199,7 @@ def generate_dataset(config, train=True):
 def main():
     config = Config.load("configs/dataset.json")
 
-    # get_keyframes(config, train=True)
+    get_keyframes(config, train=True)
     generate_dataset(config, train=True)
 
     # get_keyframes(config, train=False)

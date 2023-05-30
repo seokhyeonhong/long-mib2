@@ -48,11 +48,11 @@ if __name__ == "__main__":
     # model
     print("Initializing model...")
     ctx_config = Config.load("configs/context.json")
-    ctx_model = ContextTransformer(len(motion_mean), len(traj_mean), ctx_config).to(device)
+    ctx_model = ContextTransformer(len(motion_mean), ctx_config, len(traj_mean)).to(device)
     utils.load_model(ctx_model, ctx_config)
     ctx_model.eval()
 
-    det_model = DetailTransformer(len(motion_mean), len(traj_mean), config).to(device)
+    det_model = DetailTransformer(len(motion_mean), config, len(traj_mean)).to(device)
     optim = torch.optim.Adam(det_model.parameters(), lr=config.lr, betas=(0.9, 0.999), eps=1e-8)
     init_epoch, iter = utils.load_latest_ckpt(det_model, optim, config)
 

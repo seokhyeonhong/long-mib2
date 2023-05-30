@@ -1,0 +1,447 @@
+
+% -------------------- Introduction --------------------
+\chapter{Introduction}
+\begin{figure}[h]
+    \includegraphics[width=\textwidth]{fig/teaser.png}
+    \caption[Overview]{An overview of our method. Given context frames and a target frame (blue), our method generates keyframes (purple) and transition frames (white). In particular, we employ hierarchical approach that predicts keyframes first, interpolates keyframes, and refines the interpolated frames subsequently.}
+    \label{fig:teaser}
+\end{figure}
+
+\noindent
+In recent years, there has been an increasing demand for natural and expressive 3D character animation in various computer graphics applications, such as games, films, and virtual reality.
+However, obtaining high-quality motion data remains a challenging task due to the complexity and stochastic nature of human motion along the temporal domain.
+Traditional keyframing methods require manual adjustment of spline tangents at keyframes, resulting in a time-consuming and labor-intensive authoring process.
+Although motion capture is a viable alternative, it necessitates large capture volumes, expensive capture devices, and skilled experts for post-processing.
+Even with the motion capture, manual editing and supplementation are still necessary for higher accuracy and diversity of motion data, making manual keyframing inevitable.
+
+Motion in-betweening has emerged as a promising alternative to keyframing, particularly with the development of deep neural network models.
+Learning-based approaches have shown impressive results in generating natural motion sequences given sparse keyframes using Recurrent Neural Networks (RNN)~\cite{harvey2018recurrent, harvey2020robust, tang2022real}, Convolutional Neural Networks (CNN)~\cite{kaufmann2020convolutional, zhou2020generative}, or Transformers~\cite{qin2022motion, kim2022conditional, oreshkin2022motion, duan2022unified}.
+However, current methods are commonly limited to generating relatively short transitions, around 1 second, as the quality of results decreases rapidly as the transition length increases.
+Therefore, the target frame must be similar to the context frames because only the poses that can be achieved from the context frame should be given.
+
+In this paper, we propose a hierarchical architecture consisting of two Transformers that can robustly synthesize long-term motion in-betweening.The stochastic nature of motion along the temporal dimension increases the number of possible motions as the transition length grows, making it challenging to optimize the entire transition frames at once. To overcome this problem, we divide the problem into smaller subproblems that are easier to train. Our approach first predicts keyframes that represent the entire motion sequence and then refines the remaining frames as shown in Figure~\ref{fig:teaser}. By adopting this strategy, we can effectively train a network to solve long-term motion in-betweening.
+
+Additionally, the high stochasticity of long transitions introduces predictability challenges due to the uncertainty in the missing frames. The existence of numerous possible trajectories within the missing frames makes it difficult for users to anticipate which trajectory the character will follow before the output is generated. To address this issue, we leverage the root trajectory as a conditional input during the synthesis of transition frames. By incorporating the root trajectory, our approach not only provides users with predictability over the generated results but also offers editability that empowers users to achieve their desired outcome.
+
+In summary, our contributions are as follows:
+\begin{itemize}
+    \item We propose a hierarchical architecture consisting of two Transformers that effectively synthesizes long-term motion in-betweening.
+    \item We introduce the incorporation of the root trajectory as a conditional input, enhancing predictability and user editability, and granting users control over the desired motion outcome.
+    \item Our method enables users to achieve their desired results by utilizing the trajectory as an editable high-level user instruction.
+
+\end{itemize}
+
+% -------------------- Related Work --------------------
+\chapter{Related Work}
+\section{Motion In-betweening}
+\noindent
+Motion in-betweening is a conditional motion synthesis task that generates smooth and natural transitions conditioned on temporally sparse pose constraints on both some context frames and a target frame. Early works on transition generation produced transitions between keyframes by optimization with spacetime constraints~\cite{rose1996efficient, witkin1988spacetime} and Radial Basis Functions (RBF)~\cite{rose1998verbs, rose2001artist}. More sophisticated statistical models were also adopted in transition synthesis such as Maximum A Posteriori (MAP)~\cite{chai2007constraint, min2009interactive}, nonlinear Markov models~\cite{lehrmann2014efficient}, geostatistical model~\cite{mukai2005geostatistical}, and Gaussian Process~\cite{wang2007gaussian}.
+
+Recurrent Neural Networks (RNN) such as Long Short-Term Memory (LSTM)~\cite{hochreiter1997long} have become a promising approach for motion in-betweening with the development of deep learning models. Based on the Encoder-Recurrent-Decoder (ERD) model~\cite{fragkiadaki2015recurrent}, Harvey et al.~\cite{harvey2018recurrent} presented Recurrent Transition Networks (RTN), which can synthesize transition frames by introducing additional non-linear encoders for conditioning the temporal dynamics with future context information. To further improve RTN, Harvey et al.~\cite{harvey2020robust} introduced a time-to-arrival embedding to allow robustness to different lengths of transition frames, and a scheduled target noise vector to produce diverse results. Tang et al.~\cite{tang2022real} additionally used a Conditional Variational Autoencoder (CVAE) wtih mixture of experts decoder for higher quality results.
+
+Convolutional Neural Networks (CNN) have also been used for motion in-betweening as it can fill not only the entire missing frames but also partially filled frames~\cite{kaufmann2020convolutional, zhou2020generative}. To further extend CNN architectures to capture global context information, Cai et al.~\cite{cai2021unified} additionally used CVAE with a cross-attention mechanism.
+
+Recently, Transformer models have been in motion in-betweening as Transformer models have shown superior performance with faster computation over RNN models in natural language processing ~\cite{vaswani2017attention}. Duan et al.~\cite{duan2022unified} presented a unified framework for various motion completion tasks, including in-betweening, in-filling, and blending. Kim et al.~\cite{kim2022conditional} utilized a Transformer encoder structure and allowed pose conditions as well as semantic conditions. Oreshkin et al.~\cite{oreshkin2022motion} presented a Transformer encoder-decoder architecture to predict difference of joint rotations on top of interpolated motion sequences in order to allow stronger robustness to out-of-distribution shifts. Recently, Qin et al.~\cite{qin2022motion} proposed two separate Transformer encoders with additional training strategies such as learned embeddings and relative attention mechanisms. In this work, we extend the two-stage Transformers~\cite{qin2022motion} to tackle long-term motion in-betweening with trajectory conditioning.
+
+\section{Keyframe Selection and Prediction}
+\noindent
+As keyframes represent significant frames within a sequence where key moments in a timeline, they are widely used in manipulating sequential data such as video and motion.
+
+\section{Trajectory-based Motion Synthesis}
+\noindent
+Trajectory information has been widely utilized as a control signal in motion control and synthesis tasks by specifying the desired position and direction of the character. Early works on data-driven motion synthesis involved constructing a motion graph where the edges represent plausible transitions between motion segments in the database~\cite{kovar2002motion, lee2002interactive}. This motion graph has been employed to address the trajectory traversal problem by finding an optimal path within the graph~\cite{kovar2002motion, lee2002interactive, safonova2007construction, min2012motion, shum2012simulating}.
+
+Motion matching, on the other hand, is an efficient control algorithm that searches for the best transitions at runtime given current pose state and past and future trajectory information~\cite{buttner2015motion}. Motion matching has been successfully applied to tasks requiring responsiveness, such as games~\cite{holden2018character} and kinematic controller for physically-based animation~\cite{bergamin2019drecon, hong2019physics}. Recently, Holden et al.~\cite{holden2020learned} have shown that the need for large motion database for motion matching can be replaced by training a neural network. Cho et al.~\cite{cho2021motion} replaced the greedy approximation of motion matching with the learned control polocies leveraging deep reinforcement learning. Subsequent works of motion matching employ different approaches, but they commonly use trajectory as a control parameter.
+
+Other learning-based approaches in motion control have also incorporated trajectory information as a control signal. Holden et al.~\cite{holden2016deep} introduced a deep feedforward neural network that produces motion sequences following a given trajectory precisely. In their subsequent work, they proposed a phase-functioned neural network that utilizes mixture of experts, with weights computed by the function of the phase that represents the timing of the motion cycle~\cite{holden2017phase}. This idea has been further developed to the quadruped character controllers~\cite{zhang2018mode}, character-scene interactions~\cite{starke2019neural}, and construction of periodic latent spaces suitable for the motion data~\cite{starke2022deepphase}, all incorporating trajectory information as a control signal.
+
+% -------------------- Method --------------------
+\chapter{Method}
+\section{System overview}
+\begin{figure}[h]
+    \centering\includegraphics[width=0.6\textwidth]{fig/overview.png}
+    \caption[System Overview]{System overview of our proposed architecture. KeyframeNet takes as input a motion sequence with masked frames between context and target frames, along with trajectory features, to generate keyframes. The remaining frames are then interpolated and propagated by RefineNet, which additionally uses trajectory features to generate a smooth and natural motion sequence.}
+    \label{fig:overview}
+\end{figure}
+
+\noindent
+Our proposed architecture consists of two Transformer-based networks, KeyframeNet and RefineNet, as illustrated in Figure~\ref{fig:overview}. KeyframeNet is responsible for predicting keyframes, which serve as anchor points for the long missing frames within a given motion sequence. The remaining frames are then roughly approximated by interpolating predicted keyframes. Subsequently, RefineNet refines the approximated motion sequence, producing a natural and smooth final output. Note that both KeyframeNet and RefineNet receive trajectory information as a conditional input.
+
+In the following sections, we provide detailed explanations of the data representation (see Section~\ref{sec:data}) and the network architectures (see Section~\ref{sec:keyframenet} and \ref{sec:refinenet} for KeyframeNet and RefineNet respectively).
+
+\section{Data Representation}
+\label{sec:data}
+\noindent
+We represent the motion sequence of $T$ frames as $\mathbf{x} = [\mathbf{x}_1, \mathbf{x}_2, \dots, \mathbf{x}_T]^\top \in \mathbb{R}^{T \times D}$, where $\mathbf{x}_t$ represents the pose vector of a skeleton with $J$ joints at frame $t$. The pose vector $\mathbf{x}_t$ consists of two components: $\mathbf{r}_t$, which represents the local joint orientations with respect to the parents of each joint, and $\mathbf{p}_t$, which denotes the global root position. Therefore, we have $\mathbf{x}_t = [\mathbf{r}_t, \mathbf{p}_t]\in\mathbb{R}^{D}$, where $D = 6J + 3$ because we choose the 6D rotation representation for joint rotations, which has shown improved performance for training neural networks compared to other rotation representations~\cite{zhou2019continuity}.
+
+As conditional inputs, we utilize a trajectory vector and a mask vector. The trajectory vector, denoted as $\mathbf{t} = [\mathbf{t}_1, \mathbf{t}_2, \dots, \mathbf{t}_T]^\top \in\mathbb{R}^{T \times 4}$, contains the trajectory information at each frame. Here, $\mathbf{t}_t = [\mathbf{t}^{pos}_t, \mathbf{t}^{dir}_t]$, where $\mathbf{t}^{pos}_t\in\mathbb{R}^{2}$ and $\mathbf{t}^{dir}_t\in\mathbb{R}^{2}$ respectively represent the character's root position and forward direction on the horizontal plane at frame $t$. Specifically, $\mathbf{t}^{pos}_t$ can be computed by projecting the character's root position onto the horizontal plane, while $\mathbf{t}^{dir}_t$ can be computed by projecting the forward direction onto the horizontal plane and normalizing the resulting vector to unit length. Additionally, the mask vector $\mathbf{m}\in\mathbb{R}^{T\times 1}$ indicates whether a frame is masked, containing ones and zeros depending on whether the frame is constrained or not.
+
+We denote the lengths of the context frames and transition frames as $t_{ctx}$ and $t_{trans}$, respectively, resulting in $T = t_{ctx} + t_{trans} + 1$ since we use only one frame as the target. Therefore, the objective of our method is to predict $\mathbf{x}_{t\in(t_{ctx}, T)}$ given $\mathbf{x}_{t\in[1, t_{ctx}]}$ and $\mathbf{x}_{T}$.
+
+\section{KeyframeNet}
+\label{sec:keyframenet}
+\begin{figure}[h]
+    \centering\includegraphics[width=0.8\textwidth]{fig/keyframenet.png}
+    \caption[KeyframeNet]{The network architecture of KeyframeNet.}
+    \label{fig:keyframenet}
+\end{figure}
+\noindent
+The goal of KeyframeNet is to predict keyframes that can serve as anchor points in missing frames. As illustrated in Figure~\ref{fig:keyframenet}, KeyframeNet is an encoder-decoder architecture with Transformer encoders, which takes $\mathbf{x}$, $\mathbf{t}$, and $\mathbf{m}$ as inputs. The overall network architecture is similar to two-stage Transformers~\cite{qin2022motion}, but our method differs in that it receives trajectory features $\mathbf{t}$ as a conditional input and additionally predicts keyframe scores.
+
+The first module, called the temporal encoder, is a multi-layer perceptron (MLP) that projects the input into the $d$-dimensional temporal latent vector $\mathbf{z}^\mathcal{T}$. The temporal encoder consists of a hidden layer and an output layer:
+\begin{equation}
+    \mathbf{z}^\mathcal{T}
+    = \phi(
+        \phi(
+             [\mathbf{x}, \mathbf{t}, \mathbf{m}]\mathbf{W}^\mathcal{T}_{(1)} + \mathbf{b}^\mathcal{T}_{(1)}
+        )
+        \mathbf{W}^\mathcal{T}_{(2)} + \mathbf{b}^\mathcal{T}_{(2)}
+    )
+\end{equation}
+
+\noindent
+where $\mathbf{W}^\mathcal{T}_{(i)}$ and $\mathbf{b}^\mathcal{T}_{(i)}$ are weight and bias parameter at $i$-th layer of the temporal encoder, respectively, and $\phi(\cdot)$ is the Parametric Rectified Linear Unit (PReLU) activation function\cite{he2015delving}.
+
+We also use positional encoding that makes the input sequence permutation-invariant because Transformer requires sequence order information. We calculate the learned positional encoding using the position encoder, which is also an MLP:
+\begin{equation}
+    \mathbf{pe}^\mathcal{P} =
+        \phi(
+            \widetilde{\mathbf{pe}}^\mathcal{P} \mathbf{W}^\mathcal{P}_{(1)} + \mathbf{b}^\mathcal{P}_{(1)}
+        )
+        \mathbf{W}^\mathcal{P}_{(2)} + \mathbf{b}^\mathcal{P}_{(2)}
+    )
+\end{equation}
+
+\noindent
+where the $\widetilde{\mathbf{pe}}^\mathcal{P} \in \mathbb{R}^{T \times 2}$ describes the position of every frame relative to both the last context frame the target frame and $\mathbf{W}^\mathcal{P}_{(i)}$ and $\mathbf{b}^\mathcal{P}_{(i)}$ are weight and bias parameter at $i$-th layer of the frame position encoder, respectively. Subsequently,  $\mathbf{pe}^\mathcal{P}$ is added to the encoded sequence $\mathbf{z}^\mathcal{T}$, resulting in:
+
+\begin{equation}
+\label{eq:additive}
+    \mathbf{z}_0 = \mathbf{z}^\mathcal{T} + \mathbf{pe}^\mathcal{P}
+\end{equation}
+
+Transformer layers are composed of multi-head self-attention (MHSA), position-wise feed-forward network (PFFN), layer normalization (LayerNorm)~\cite{ba2016layer}, and residual connection~\cite{he2016deep} as in vanilla Transformer \cite{vaswani2017attention}:
+\begin{equation}
+    \tilde{\mathbf{z}}_l = \mathbf{z}_{l-1} + \mathrm{MHSA}(\mathrm{LayerNorm}(\mathbf{z}_{l-1}))
+\end{equation}
+\begin{equation}
+    \mathbf{z}_l = \tilde{\mathbf{z}}_l + \mathrm{PFFN}(\mathrm{LayerNorm}(\tilde{\mathbf{z}}_{l}))
+\end{equation}
+
+\noindent
+where $\mathbf{z}_l$ is the output of $l$-th Transformer encoder layer except for the base case described in Equation~\ref{eq:additive}. Note that we adopt pre-layer normalization that places the layer normalization before the MHSA or PFFN layers since it can improve stability and efficiency during training~\cite{baevski2018adaptive, child2019generating}.
+
+In each MHSA layer, we additionally use learned relative positional encoding. By capturing the pairwise distance between any arbitrary two frames, relative positional encoding could improve the performance of Transformer in machine translation~\cite{shaw2018self}, music generation~\cite{huang2018music}, and motion in-betweening~\cite{qin2022motion}. Specifically, relative positional encoding is calculated following:
+\begin{equation}
+    \mathbf{pe}^\mathcal{R} =
+        \phi(
+            \mathbf{pos}^\mathcal{R} \mathbf{W}^\mathcal{R}_{(1)} + \mathbf{b}^\mathcal{R}_{(1)}
+        )
+        \mathbf{W}^\mathcal{R}_{(2)} + \mathbf{b}^\mathcal{R}_{(2)}
+    )
+\end{equation}
+\noindent
+where $\mathbf{pos}^\mathcal{R}\in\mathbb{R}^{(2T-1)\times1}$ is the relative distances between two arbitrary frames while $\mathbf{pe}^\mathcal{R}\in\mathbb{R}^{(2T-1)\times d_K}$ is the learned relative positional encoding, denoting $d_K$ as the dimension of each head. Similar to the temporal encoder and the position encoder, $\mathbf{W}^\mathcal{R}_{(i)}$ and $\mathbf{b}^\mathcal{R}_{(i)}$ are weight and bias parameter at $i$-th layer of the relative position encoder. Consequently, the MHSA layer can be written as follows:
+\begin{gather}
+    \mathrm{MHSA}(\mathbf{z}) = [\mathbf{h}_1, \dots, \mathbf{h}_H]\mathbf{W}^O\\
+    \mathbf{h}_i = \mathrm{Attention}(\mathbf{Q}_i, \mathbf{K}_i, \mathbf{V}_i)\\
+    \mathbf{Q}_i = \mathbf{z}\mathbf{W}^Q_{(i)}, \mathbf{K}_i = \mathbf{z}\mathbf{W}^K_{(i)}, \mathbf{V}_i = \mathbf{z}\mathbf{W}^V_{(i)}\\
+    \mathrm{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \sigma(\frac{\mathbf{Q}\mathbf{K}^T+\mathbf{S}_{rel}}{\sqrt{d_K}})\mathbf{V}\\
+    \mathbf{S}_{rel} = \mathrm{skew}(\mathbf{Q}(\mathbf{pe}^{rel})^\top)
+\end{gather}
+
+\noindent
+where $\mathbf{h}_i$ is the $i$-th attention head, $\mathbf{Q}_i, \mathbf{K}_i, \mathbf{V}_i$ are the query, key, and value of $i$-th attention head, respectively, $\sigma(\cdot)$ is the softmax function, and $\mathrm{skew}(\cdot)$ is the efficient skewing mechanism~\cite{huang2018music}. Note that we use no attention mask because trajectory features are not masked on any frames, allowing any frames can attend to each other.
+
+Finally, the MLP-based decoder predicts the pose and keyframe score for each frame as follows:
+\begin{gather}
+    [\mathbf{y}^{kf}, \hat{\mathbf{s}}^{kf}] =
+        \phi(
+            \mathbf{z}_L\mathbf{W}^\mathcal{D}_{(1)} + \mathbf{b}^\mathcal{D}_{(1)}
+        )
+        \mathbf{W}^\mathcal{D}_{(2)} + \mathbf{b}^\mathcal{D}_{(2)}
+    )\\
+    \mathbf{s}^{kf} = \mathrm{sigmoid}(\hat{\mathbf{s}}^{kf})
+\end{gather}
+where $\mathrm{sigmoid}(\cdot)$ is the sigmoid function.
+
+\subsection{Keyframe Score}
+\noindent
+Keyframe score indicates how probable a frame can be used as a keyframe. To this end, we employ the Salient Poses algorithm~\cite{roberts2018optimal} to compute the ground truth keyframe sscore. Therefore, KeyframeNet predicts both keyframe scores and the transition, and the frames with high keyframes score are chosen as keyframes.
+
+Salient Poses is a dynamic programming-based algorithm that extracts a set of optimal keyframes from a motion sequence. Each of $N$ frames is treated as a node in a directed graph, where the weight of an edge $e_{i, j}$ represents the cost of approximating the motion sequence by taking frames $i$ and $j$ as keyframes compared to the original motion sequence. By considering these $\binom{N}{2}$ values as initial costs, we compute the optimal solution $E^m_{i, j}$ that extracts $m$ keyframes between frames $i$ and $j$ using:
+
+\begin{equation}
+\label{eq:optimal-solution}
+E^m_{i, j} = \min_k (E^{m-1}_{i, k} + e_{k, j})
+\end{equation}
+
+\noindent
+with the base case defined as:
+
+\begin{equation}
+\label{eq:initial-costs}
+E^1_{i, j} \equiv e_{i, j}
+\end{equation}
+
+\noindent
+Here, $k$ denotes the index of the new keyframe, which is computed from an optimal sub-solution of $m-1$ keyframes as:
+
+\begin{equation}
+\label{eq:new-keyframe}
+\operatorname*{argmin}_k (E^{m-1}_{i, k} + e_{k, j})
+\end{equation}
+\noindent
+Notably, the optimal solution for the $m$-th step, which is denoted by $E^{m}_{i, j}$ is reused in step $(m+1)$-th step as a sub-solution. This successive relationship enables a dynamic programming optimization.
+
+In our implementation, we compute the cost $e_{i, j}$ as follows. First, we compute the $k$-th pose vector $\mathbf{x}_k$, where $k\in(i, j)$, by interpolating two pose vectors $\mathbf{x}_i$ and $\mathbf{x}_j$ using linear interpolation (lerp) for the root position and spherical linear interpolation (slerp) for the joint rotations such that:
+\begin{gather}
+    \mathrm{lerp}(\mathbf{p}_{i}, \mathbf{p}_{j}, t) = \mathbf{p}_{i} + t\cdot(\mathbf{p}_{j} - \mathbf{p}_{i})\\
+% \end{equation}
+% \begin{equation}
+    \mathrm{slerp}(\mathbf{q}_{i}, \mathbf{q}_{j}, t) = \mathbf{q}_{i}(\mathbf{q}^{-1}_{i}\mathbf{q}_{j})^{t}
+\end{gather}
+
+\noindent
+where $t = \frac{k - i}{j - i}$ for $k$-th interpolation and $\mathbf{q}$ denote the joint rotations in quaternion. Then we solve the forward kinematics (FK) and define $e_k$ as the sum of the Euclidean distances of every joint between the interpolated and the original motion sequences. Finally, we define $e_{i, j}$ as:
+\begin{equation}
+    e_{i, j} = \max{e_k} \text{ for } \forall k\in(i, j)
+\end{equation}
+
+\noindent
+Notably, we focus on the transition frames rather than the constrained frames because the constrained frames are already given in the input. Therefore, our ground truth keyframe score $\mathbf{k}^{gt}$ is computed by taking the last context frame and the target frame as the anchor points for the interpolation to compute $\mathbf{k}^{gt}_{t\in(t_{ctx}, T)}$, and $\mathbf{k}^{gt}_{t\in[1, t_{ctx}]}$ and $\mathbf{k}^{gt}_{T}$ are set to 1 by default.
+
+\subsection{Adaptive Keyframe Selection}
+\noindent
+After KeyframeNet predicts keyframe scores for every frame, the principle for how to use the keyframe scores should be determined. Some top-scored frames or the scores higher than a certain threshold can be used, but they can produce the cases where the distance between selected keyframes are too close or too far. To alleviate such cases, we introduce the adaptive keyframe selection.
+
+First, we set a window ranged $[t_0, t_0+t_{w}]$ where a keyframe will be selected, and $t_0 = t_{ctx} + t_{gap}$. The frame $t_k$ with the largest keyframe score in that range is selected as a keyframe, and the window to sample another keyframe moves to $[t_1, t_1+t_{w}]$ where $t_1 = t_k+t_{gap}$. This process is iterated until the window does not overlap with the sequence. After selecting all the keyframes, poses on remaining frames are interpolated by lerp and slerp on root position and joint orientations, respectively.
+
+
+
+Adaptive keyframe selection is computationally efficient, stable to generate a smooth motion sequence, and allows for additional user control by adjusting $t_{gap}$ so that users can modify the maximum keyframe placement gap.
+
+\section{RefineNet}
+\label{sec:refinenet}
+\begin{figure}[h]
+    \centering\includegraphics[width=0.8\linewidth]{fig/refinenet.png}
+    \caption[RefineNet]{The architecture of RefineNet.}
+    \label{fig:refinenet}
+\end{figure}
+\noindent
+As shown in Figure~\ref{fig:refinenet}, the objective of RefineNet is to refine the interpolated output of KeyframeNet and generate natural animation. RefineNet has similar architecture to that of KeyframeNet, but they are not identical because there are architectural modifications on RefineNet to fit the purpose of it. In contrast to KeyframeNet, RefineNet does not use frame positional encoding because each frame does not have to attend to context and target frames.
+
+To be written more.
+
+\section{Loss}
+\noindent
+We use several loss terms to train KeyframeNet and RefineNet. The loss terms for KeyframeNet and RefineNet are introduced in Section~\ref{sec:loss-keyframenet} and Section~\ref{sec:loss-refinenet}, respectively.
+
+\subsection{KeyframeNet}
+\label{sec:loss-keyframenet}
+\noindent
+We train KeyframeNet using the following loss function:
+\begin{equation}
+    \label{eq:loss-keyframenet}
+    L_{kf}=L_{rot} + \alpha_{pos}L_{pos} + \alpha_{traj}L_{traj} + \alpha_{score}L_{score} + \alpha_{smooth}L_{smooth} 
+\end{equation}
+
+\noindent
+where $L_{rot}$, $L_{pos}$, and $L_{score}$ are L1 norm reconstruction losses of local joint rotations, global joint positions, and keyframe scores, respectively:
+
+\begin{equation}
+    \label{eq:loss-rot}
+    L_{rot}=\frac{1}{t_{trans}}\sum_{t=t_{ctx}+1}^{T-1}{\lVert\mathbf{r}_t - \hat{\mathbf{r}}_t\rVert}
+\end{equation}
+
+\begin{equation}
+    \label{eq:loss-pos}
+    L_{pos}=\frac{1}{t_{trans}}\sum_{t=t_{ctx}+1}^{T-1}{\lVert FK(\mathbf{x}_t) - FK(\hat{\mathbf{x}}_t)\rVert}
+\end{equation}
+
+\begin{equation*}
+    \label{eq:loss-traj}
+    L_{traj}=\frac{1}{t_{trans}}\sum_{t=t_{ctx}+1}^{T-1}\left(\lVert \mathbf{t}_{t}^{pos} - \hat{\mathbf{t}}_{t}^{pos} \rVert
+                                                            + \lVert 1 - \mathrm{dot}(\mathbf{t}_{t}^{dir}, \hat{\mathbf{t}}_{t}^{dir}) \rVert\right)
+\end{equation*}
+
+\begin{equation}
+    \label{eq:loss-score}
+    L_{score}=\frac{1}{t_{trans}}\sum_{t=t_{ctx}+1}^{T-1}{\lVert \mathbf{s}_t - \hat{\mathbf{s}}_t\rVert}
+\end{equation}
+
+\noindent
+where $\mathbf{t}^{pos}$ and $\mathbf{t}^{dir}$ represent the position and direction of the trajectory while $\mathrm{dot}(\cdot)$ is the dot product operation. Note that we calculate $L_{pos}$ by solving forward kinematics (FK) as it helps to improve the performance by implicitly weighting the joints in the skeleton hierarchy~\cite{harvey2020robust, pavllo2020modeling}.
+
+We additionally use the smoothness loss $L_{smooth}$ that prevents sudden drifts of the output motion:
+\begin{equation}
+    \label{eq:loss-smooth}
+    L_{smooth}=\frac{1}{t_{trans}+1}\sum_{t=t_{ctx}+1}^{T}{\lVert \hat{\mathbf{v}}_t - \hat{\mathbf{v}}_{t-1}\rVert}
+\end{equation}
+
+\noindent
+where we define $\hat{\mathbf{v}}_t=FK(\hat{\mathbf{x}}_t) - FK(\hat{\mathbf{x}}_{t-1})$. Note that the loss terms are evaluated over the transition frames rather than the entire frames since the constrained frames (i.e. the context frames and the target frame) are restored to the input values.
+
+\subsection{RefineNet}
+\label{sec:loss-refinenet}
+\noindent
+We train RefineNet using the following loss function:
+\begin{equation}
+    \label{eq:loss-refinenet}
+    L_{ref}=L_{rot} + \beta_{pos}L_{pos} + \beta_{traj}L_{traj} + \beta_{contact}L_{contact} + \beta_{foot}L_{foot}
+\end{equation}
+
+\noindent
+where $L_{rot}$, $L_{pos}$, and $L_{traj}$ are introduced in Equation~\ref{eq:loss-rot}, \ref{eq:loss-pos}, and~\ref{eq:loss-traj}, respectively.
+
+Similarly to $L_{rot}$ and $L_{pos}$, $L_{contact}$ is also an L1 norm reconstruction loss of contact labels:
+\begin{equation}
+    \label{eq:loss-contact}
+    L_{contact}=\frac{1}{t_{trans}}\sum_{t=t_{ctx}+1}^{T-1}{\lVert \mathbf{c}_t - \mathrm{sigmoid}(\hat{\mathbf{c}}_t)\rVert}
+\end{equation}
+
+\noindent
+where $\mathrm{sigmoid}(\cdot)$ is a sigmoid function (i.e. $\mathrm{sigmoid}(x)=\frac{1}{1+e^{-x}}$). Note that the contact label vector $\mathbf{c_t}\in\mathbb{R}^4$ represents the contact information of both feet and toes at frame $t$ and $\hat{\mathbf{c}}_t$ represents predicted contact labels from the raw output of RefineNet.
+
+In orer to alleviate foot sliding artifact in the output motion, we define the foot sliding loss:
+\begin{equation}
+    \label{eq:loss-foot}
+    L_{score}=\frac{1}{t_{trans}}\sum_{t=t_{ctx}+1}^{T-1}{\lVert \hat{\mathbf{v}}_t^f \cdot \mathrm{sg}(\mathbf{c}_t^f)\rVert}
+\end{equation}
+where $f$ represents the indices of foot and toe joints and $\mathrm{sg}(\cdot)$ is the stop gradient operator, which constrains its operand to be a non-updated constant. Note that the predicted foot velocity and the predicted contact label are multiplied to encourage the model to maintain consistency with its own predictions~\cite{qin2022motion, tseng2022edge}. Additionally, the stop gradient operator prevents the predicted contact label to be always optimized to zero.
+
+% -------------------- Results and Evaluations --------------------
+\chapter{Results and Evaluations}
+\noindent
+We performed various experiments to demonstrate the robustness of our method to long-term transition synthesis. After explaining implementation details, we provide both quantitative and qualitative results of our method. We also report the ablation study results on our system design choices and loss terms. Finally, we demonstrate the evaluation on user-specifed trajectory to show the robustness of our system on various trajectories that are different from ground truth.
+
+\section{Implementation Details}
+\noindent
+Our method is implemented in PyTorch with a Intel i9-11900F 2.5GHz CPU, 64GB memory, and an NVIDIA GeForce RTX 3090 GPU. KeyframeNet and RefineNet are trained with a mini-batch of 64 motion clips for 150,000 iterations and 600,000 iterations, respectively, which takes around 2 hours and 10 hours each. The dimension of hidden layers and output layers of all MLP components are 512, except for the output layer of each decoder of KeyframeNet and RefineNet. For Transformer components, the number of Transformer layers $L$ and the number of attention heads $H$ are set to 512 and 8, resulting in the dimension of each head $d_K$ as 64.
+
+\subsection{Dataset and Pre-processing}
+\noindent
+We evaluate our method on the LaFAN1 dataset~\cite{harvey2020robust}, which provides production-ready quality motion sequences with an approximate duration of 4.5 hours. The dataset comprises various actions, such as walking, running, crawling, and dancing, captured by five subjects. As the LaFAN1 dataset intentionally included long motion sequences only, it has become widely used for transition generation tasks~\cite{harvey2020robust, qin2022motion, kim2022conditional, duan2022unified, oreshkin2022motion}.
+
+The training set consists of sequences captured from Subjects 1-4, while the test set comprises sequences captured from Subject 5. Both training and test sets are extracted with a window length and offset of 101 and 20, and all of the windows are pre-processed so that the root of the skeleton faces the global forward axis and its horizontal coordinates are zeroed out at the last context frame. This pre-processing makes the training more effeciently by making each transition starts with the same global position and orientation~\cite{harvey2020robust}. Additionally, we apply z-score normalization for more stable training, and the mean and standard deviation are calculated from the training set.
+
+
+\subsection{Training}
+\noindent
+We train both KeyframeNet and RefineNet with a random number of transition frames sampled from the uniform distribution of $[t_{min\_trans}, t_{max\_trans}]$, where $t_{min_trans}$ and $t_{max_trans}$ are respectively set to 5 and 90. As the optimizer, we use the Adam optimizer~\cite{kingma2014adam} with a fixed learning rate of $10^{-5}$ for both KeyframeNet and RefineNet. The loss weights for the KeyframeNet are $\alpha_{pos}=1.0$, $\alpha_{traj}=0.5$, $\alpha_{score}=1.0$, and $\alpha_{smooth}=0.1$. For the RefineNet, $\beta_{pos}=2.0$, $\beta_{traj}=0.2$, $\beta_{contact}=0.05$, and $\beta_{foot}=0.05$.
+
+\subsection{Evaluation Metrics}
+\noindent
+To compare the performance of our method to different methods, we use the transition benchmark L2P and L2Q introduced by Harvey et al.~\cite{harvey2020robust}. The L2P measures the average L2 distance of the normalized global joint positions, and the mean and standard deviation for the normalization are calculated from the training set. Similar to the L2P, the L2Q measures the average L2 distance of the global joint rotations in quaternion without normalization. Moreover, we propose an additional metric L2T that evaluates average L2 norm between the trajectory features of the ground truth and the predicted motion, which is defined as:
+\begin{equation}
+    \label{eq:l2t}
+    \mathrm{L2T} = \frac{1}{\lvert\mathcal{D}\rvert} \frac{1}{t_{trans}} \sum_{s\in\mathcal{D}} \sum_{t=1}^{t_{trans}} {\lVert \hat{\mathbf{t}}_t - \mathbf{t}_t \rVert}_2
+\end{equation}
+\noindent
+where $s$ is a transition sequence of the test set $\mathcal{D}$.
+
+\section{Quantitative Comparison with Previous Methods}
+\noindent
+We compare our method with the two-stage Transformers (TS-Trans)~\cite{qin2022motion}, which we take as our baseline. For the fair comparison, we additionally report the results of TS-Trans trained with trajectory condition. We also include the naive interpolation between the last context frame and the target frame. The experimental results are reported in Table~\ref{tab:benchmark}.
+
+Compared to the TS-Trans, our method demonstrated improved transition benchmark results for most cases, and our method is more robust on longer transitions than seen during training while our method has approximately equal number of trainable parameters with TS-Trans. Note that the trajectory condition has brought much improved performance over the vanilla TS-Trans, proving the trajectory condition has a positive effect on long-term transition synthesis. Additionally, our method demonstrated more stable L2T metric results than other methods. These results show that our design choice was proper to deal with long transitions with precise trajectory following.
+
+\begin{table}[h]
+\caption[Transition benchmark results]{Transition benchmark results on the LaFAN1 dataset. All models are trained with a maximum transition length of 90 frames.}
+\label{tab:benchmark}
+\begin{center}
+\begin{tabular}{l|*{8}{c}}
+\toprule
+% L2P
+& \multicolumn{8}{c}{L2P $\downarrow$} \\ \hline
+Transition length (frames) & 5               & 15              & 30              & 60              & 90              & 120             & 150             & 180             \\ \hline
+Interpolation              & 0.1173          & 0.4236          & 0.7937          & 1.6253          & 2.5590          & 3.4282          & 4.1811          & 4.8363          \\
+TS-Trans                   & 0.1359          & 0.2631          & 0.4627          & 0.9980          & 1.7703          & 2.6761          & 3.5969          & 4.4813          \\
++ trajectory condition     & 0.1059          & \textbf{0.2277} & 0.3705          & 0.5530          & 0.7055          & 0.8789          & 1.0869          & 1.3315          \\
+Ours                       & \textbf{0.0793} & 0.2296          & \textbf{0.3641} & \textbf{0.4934} & \textbf{0.5732} & \textbf{0.7602} & \textbf{0.8505} & \textbf{0.9540} \\
+
+% L2Q
+\hline
+& \multicolumn{8}{c}{L2Q $\downarrow$} \\ \hline
+Interpolation              & 0.3258          & 0.7787          & 1.1199          & 1.6549          & 2.1365          & 2.4918          & 2.7686          & 2.9734          \\
+TS-Trans                   & 0.5091          & 0.7128          & 0.9711          & 1.4505          & 1.8884          & 2.2435          & 2.5662          & 2.8564          \\
++ trajectory condition     & 0.4123          & 0.6618          & 0.7970          & 1.0041          & 1.1413          & \textbf{1.2910} & \textbf{1.4692} & 1.6819          \\
+Ours                       & \textbf{0.3235} & \textbf{0.5898} & \textbf{0.7860} & \textbf{0.9802} & \textbf{1.0679} & 1.3830          & 1.4746          & \textbf{1.5775} \\
+
+% L2T
+\hline
+& \multicolumn{8}{c}{L2T $\downarrow$} \\ \hline
+Interpolation              & 0.0208          & 0.1482          & 0.5179          & 1.8087          & 3.4538          & 5.2213          & 6.9774          & 8.6888          \\
+TS-Trans                   & 0.0306          & 0.1190          & 0.3541          & 1.2679          & 2.6290          & 4.3188          & 6.1803          & 8.1380          \\
++ trajectory condition     & 0.0128          & 0.0327          & 0.0664          & 0.1542          & 0.3004          & 0.5886          & 1.0152          & 1.6118          \\
+Ours                       & \textbf{0.0081} & \textbf{0.0263} & \textbf{0.0581} & \textbf{0.0907} & \textbf{0.1281} & \textbf{0.2127} & \textbf{0.3379} & \textbf{0.5567} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+
+\section{Qualitative Results}
+\begin{figure}[h]
+    \centering \includegraphics[width=0.9\textwidth]{fig/qual1.png}
+    \caption[Qualitative comparison to previous methods]{Qualitative comparison results}
+    \label{fig:qual1}
+\end{figure}
+\noindent
+Figure~\ref{fig:qual1} shows the qualitative comparison of our method with the ground truth and the TS-Trans trained with trajectory conditioning. (To be written more)
+
+\section{Ablation Study}
+\subsection{System Design}
+
+\begin{table}[h]
+\caption[Ablation study results for pose interpolation]{Ablation study results for pose interpolation applied to the output of KeyframeNet on the LaFAN1 dataset. All models are trained with a maximum transition length of 90 frames.}
+\label{tab:ablation-design}
+\begin{center}
+\begin{tabular}{l|*{8}{c}}
+\toprule
+% L2P
+& \multicolumn{8}{c}{L2P $\downarrow$} \\ \hline
+Transition length (frames) & 5               & 15              & 30              & 60              & 90              & 120             & 150             & 180             \\ \hline
+RefineNet                  & 0.0538          & 0.1682          & 0.2979          & 0.4394          & 0.5310          & 0.7174          & 0.8094          & 0.8987          \\
+(-) residual connection    & \textbf{0.0527} & \textbf{0.1779} & \textbf{0.3171} & \textbf{0.4791} & \textbf{0.5911} & \textbf{1.0724} & \textbf{1.2676} & \textbf{1.4411} \\
+(-) interpolation          &&&&&&&&\\
+
+% L2Q
+\hline
+& \multicolumn{8}{c}{L2Q $\downarrow$} \\ \hline
+RefineNet                  & 0.0538          & 0.1682          & 0.2979          & 0.4394          & 0.5310          & 0.7174          & 0.8094          & 0.8987          \\
+(-) residual connection    & \textbf{0.0527} & \textbf{0.1779} & \textbf{0.3171} & \textbf{0.4791} & \textbf{0.5911} & \textbf{1.0724} & \textbf{1.2676} & \textbf{1.4411} \\
+(-) interpolation          &&&&&&&&\\
+% L2T
+\hline
+& \multicolumn{8}{c}{L2T $\downarrow$} \\ \hline
+RefineNet                  & 0.0538          & 0.1682          & 0.2979          & 0.4394          & 0.5310          & 0.7174          & 0.8094          & 0.8987          \\
+(-) residual connection    & \textbf{0.0527} & \textbf{0.1779} & \textbf{0.3171} & \textbf{0.4791} & \textbf{0.5911} & \textbf{1.0724} & \textbf{1.2676} & \textbf{1.4411} \\
+(-) interpolation          &&&&&&&&\\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+\noindent
+We performed an ablation study on our system design choices. Table~\ref{tab:ablation-design} shows that the residual connection in the RefineNet has a great effect on improving the results. This is because the interpolated poses based on the predicted keyframes and ground truth poses are similar, which is the case where the residual connection is meaningful. The interpolation between predicted keyframes also showed a positive effect compared to the case without interpolation (i.e. leaving the non-keyframes zeroed out), demonstrating that making the input sequence continuous helps efficient training for motion in-betweening.
+
+\subsection{Loss Terms}
+
+\section{Evaluation on User-specified Trajectory}
+\noindent
+To evaluate the robustness to 
+
+
+% -------------------- Discussion --------------------
+\chapter{Discussion}
+\noindent
+To be written.
+
+Failure cases on modified trajectory position and directdion.
+
+Limitation of KeyframeNet.
+
+% -------------------- Conclusion --------------------
+\chapter{Conclusion}
+\noindent
+In this paper, we propose a hierarchical approach for long-term motion in-betweening with trajectory conditioning using two networks: KeyframeNet and RefineNet. Given the motion sequence with missing frames in the middle and the trajectory information, KeyframeNet predicts the keyframes that can represent the meaningful moment in the missing frames. The remaining frames are then computed by simple interpolation based on the predicted keyframes as anchor points. Subsequently, RefineNet refines the interpolated sequence to a natural sequence. Both quantitative and qualitative experimental results demonstrate that our method outeprforms the state-of-the-art motion in-betweening framework, showing the effectiveness of our design choice. Additionally, we evaluate our method on user-specified trajectories, demonstrating the robust trajectory traversal performance of our method, which can be used in animation production softwares.

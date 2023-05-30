@@ -21,7 +21,7 @@
     "val_interval": 1000,
 
     "batch_size": 64,
-    "epochs": 2000,
+    "epochs": 2500,
     "lr": 1e-5,
     "warmup_iters": 8000,
 

@@ -88,6 +88,7 @@ class TwoMotionApp(MotionApp):
     
     def render(self):
         ith_motion = self.frame // self.frames_per_motion
+        ith_frame = self.frame % self.frames_per_motion
 
         if self.show_GT:
             self.motion = self.GT_motion
@@ -105,10 +106,10 @@ class TwoMotionApp(MotionApp):
                 self.traj_point.set_position(pos[0], 0, pos[1]).draw()
 
         # draw target
-        self.target_model.set_pose_by_source(self.GT_motion.poses[(ith_motion+1)*self.frames_per_motion - 1])
-        Render.model(self.target_model).set_all_color_modes(False).set_all_alphas(0.5).draw()
-        self.target_model.set_pose_by_source(self.GT_motion.poses[(ith_motion)*self.frames_per_motion])
-        Render.model(self.target_model).set_all_color_modes(False).set_all_alphas(0.5).draw()
+        # self.target_model.set_pose_by_source(self.GT_motion.poses[(ith_motion+1)*self.frames_per_motion - 1])
+        # Render.model(self.target_model).set_all_color_modes(False).set_all_alphas(0.5).draw()
+        # self.target_model.set_pose_by_source(self.GT_motion.poses[(ith_motion)*self.frames_per_motion])
+        # Render.model(self.target_model).set_all_color_modes(False).set_all_alphas(0.5).draw()
 
     def render_text(self):
         super().render_text()
@@ -146,34 +147,40 @@ class KeyframeApp(MotionApp):
         # frames
         self.frames_per_motion = frames_per_motion
         self.keyframes = keyframes
+        self.show_keyframe = True
+    
+        for pose in self.pred_motion.poses:
+            pose.translate_root_p(np.array([1.5, 0, 0]))
     
     def render(self):
         super().render(render_model=False)
 
+        ith_motion = self.frame // self.frames_per_motion
+        ith_frame = self.frame % self.frames_per_motion
+
         # GT
         if self.show_GT:
             self.GT_model.set_pose_by_source(self.GT_motion.poses[self.frame])
-            Render.model(self.GT_model).set_all_alphas(1.0).draw()
+            Render.model(self.GT_model).set_all_alphas(1.0 if (ith_frame != 0 and ith_frame != self.frames_per_motion - 1) else 0.5).draw()
 
         # pred
         if self.show_pred:
             self.pred_model.set_pose_by_source(self.pred_motion.poses[self.frame])
-            Render.model(self.pred_model).set_all_alphas(1.0).draw()
+            Render.model(self.pred_model).set_all_alphas(1.0 if (ith_frame != 0 and ith_frame != self.frames_per_motion - 1) else 0.5).draw()
         
         # keyframes
-        ith_motion = self.frame // self.frames_per_motion
-        ith_frame = self.frame % self.frames_per_motion
-        for kf in self.keyframes:
-            if ith_motion * self.frames_per_motion <= kf < (ith_motion+1) * self.frames_per_motion - 1:
-                self.pred_model.set_pose_by_source(self.pred_motion.poses[kf])
-                Render.model(self.pred_model).set_all_alphas(0.5).draw()
+        if self.show_keyframe:
+            for kf in self.keyframes:
+                if ith_motion * self.frames_per_motion <= kf < (ith_motion+1) * self.frames_per_motion - 1:
+                    self.pred_model.set_pose_by_source(self.pred_motion.poses[kf])
+                    Render.model(self.pred_model).set_all_alphas(0.5).draw()
 
         # target frame
-        self.GT_model.set_pose_by_source(self.GT_motion.poses[(ith_motion)*self.frames_per_motion])
-        Render.model(self.GT_model).set_all_alphas(0.5).draw()
+        # self.GT_model.set_pose_by_source(self.GT_motion.poses[(ith_motion)*self.frames_per_motion])
+        # Render.model(self.GT_model).set_all_alphas(0.5).draw()
 
-        self.GT_model.set_pose_by_source(self.GT_motion.poses[(ith_motion+1)*self.frames_per_motion - 1])
-        Render.model(self.GT_model).set_all_alphas(0.5).draw()
+        # self.pred_model.set_pose_by_source(self.pred_motion.poses[(ith_motion+1)*self.frames_per_motion - 1])
+        # Render.model(self.pred_model).set_all_alphas(0.5).draw()
 
     
     def key_callback(self, window, key, scancode, action, mods):
@@ -182,6 +189,8 @@ class KeyframeApp(MotionApp):
             self.show_GT = not self.show_GT
         elif key == glfw.KEY_W and action == glfw.PRESS:
             self.show_pred = not self.show_pred
+        elif key == glfw.KEY_E and action == glfw.PRESS:
+            self.show_keyframe = not self.show_keyframe
 
 class TripletMotionApp(MotionApp):
     def __init__(self, GT_motion, motion1, motion2, ybot_model, frames_per_motion, traj=None, l2ps=None):
@@ -216,10 +225,10 @@ class TripletMotionApp(MotionApp):
         self.model2.meshes[1].materials[0].albedo = glm.vec3(0.3, 0.1, 0.1)
 
         # move pred motions
-        # for pose in self.motion1.poses:
-        #     pose.translate_root_p(np.array([1.5, 0, 0]))
-        # for pose in self.motion2.poses:
-        #     pose.translate_root_p(np.array([3, 0, 0]))
+        for pose in self.motion1.poses:
+            pose.translate_root_p(np.array([1.5, 0, 0]))
+        for pose in self.motion2.poses:
+            pose.translate_root_p(np.array([3, 0, 0]))
         
         # target
         self.target_model  = copy.deepcopy(self.GT_model)
@@ -239,6 +248,9 @@ class TripletMotionApp(MotionApp):
         # OPTIONAL: Which model to show at center
         self.motion = self.motion1
         self.model  = self.model1
+    def render_char(self, model, pose, alpha=1.0):
+        model.set_pose_by_source(pose)
+        Render.model(model).set_all_alphas(alpha).draw()
 
     def render(self):
         super().render(render_model=False, render_xray=False)
@@ -246,31 +258,22 @@ class TripletMotionApp(MotionApp):
         ith_frame = self.frame % self.frames_per_motion
 
         if self.show_GT:
-            self.GT_model.set_pose_by_source(self.GT_motion.poses[self.frame])
-            Render.model(self.GT_model).set_all_alphas(1.0).draw()
-            if self.show_constrained:
-                # self.GT_model.set_pose_by_source(self.GT_motion.poses[ith_motion * self.frames_per_motion])
-                # Render.model(self.GT_model).set_all_alphas(0.5).draw()
-                self.GT_model.set_pose_by_source(self.GT_motion.poses[(ith_motion+1) * self.frames_per_motion - 1])
-                Render.model(self.GT_model).set_all_alphas(0.5).draw()
+            self.render_char(self.GT_model, self.GT_motion.poses[self.frame], 0.5 if ith_frame == 0 or ith_frame == self.frames_per_motion - 1 else 1.0)
+            # if self.show_constrained:
+            #     self.render_char(self.GT_model, self.GT_motion.poses[ith_motion * self.frames_per_motion], 0.5)
+            #     self.render_char(self.GT_model, self.GT_motion.poses[(ith_motion+1) * self.frames_per_motion - 1], 0.5)
 
         if self.show_motion1:
-            self.model1.set_pose_by_source(self.motion1.poses[self.frame])
-            Render.model(self.model1).set_all_alphas(1.0).draw()
+            self.render_char(self.model1, self.motion1.poses[self.frame], 0.5 if ith_frame == 0 or ith_frame == self.frames_per_motion - 1 else 1.0)
             # if self.show_constrained:
-            #     # self.model1.set_pose_by_source(self.motion1.poses[ith_motion * self.frames_per_motion])
-            #     # Render.model(self.model1).set_all_alphas(0.5).draw()
-            #     self.model1.set_pose_by_source(self.motion1.poses[(ith_motion+1) * self.frames_per_motion - 1])
-            #     Render.model(self.model1).set_all_alphas(0.5).draw()
+            #     self.render_char(self.model1, self.motion1.poses[ith_motion * self.frames_per_motion], 0.5)
+            #     self.render_char(self.model1, self.motion1.poses[(ith_motion+1) * self.frames_per_motion - 1], 0.5)
         
         if self.show_motion2:
-            self.model2.set_pose_by_source(self.motion2.poses[self.frame])
-            Render.model(self.model2).set_all_alphas(1.0).draw()
-            # if self.show_constrained:
-            #     # self.model2.set_pose_by_source(self.motion2.poses[ith_motion * self.frames_per_motion])
-            #     # Render.model(self.model2).set_all_alphas(0.5).draw()
-            #     self.model2.set_pose_by_source(self.motion2.poses[(ith_motion+1) * self.frames_per_motion - 1])
-            #     Render.model(self.model2).set_all_alphas(0.5).draw()
+            self.render_char(self.model2, self.motion2.poses[self.frame], 0.5 if ith_frame == 0 or ith_frame == self.frames_per_motion - 1 else 1.0)
+            if self.show_constrained:
+                self.render_char(self.model2, self.motion2.poses[ith_motion * self.frames_per_motion], 0.5)
+                self.render_char(self.model2, self.motion2.poses[(ith_motion+1) * self.frames_per_motion - 1], 0.5)
         
         if self.show_traj and self.traj is not None:
             for t in range(self.frames_per_motion):

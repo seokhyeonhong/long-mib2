@@ -6,6 +6,7 @@ capture/
 illustrator/
 premier/
 bvh/
+results/
 
 # file types
 *.pkl

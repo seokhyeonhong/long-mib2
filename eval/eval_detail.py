@@ -47,7 +47,7 @@ if __name__ == "__main__":
 
     # det_model = DetailTransformer(len(motion_mean), det_config).to(device)
     det_model = DetailTransformer(len(motion_mean), det_config, len(traj_mean)).to(device)
-    utils.load_model(det_model, det_config, 300000)
+    utils.load_model(det_model, det_config, 600000)
     det_model.eval()
 
     # evaluation

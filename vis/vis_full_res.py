@@ -18,13 +18,13 @@ from utility.config import Config
 from utility.dataset import MotionDataset
 from vis.visapp import KeyframeApp
 from model.keyframenet import KeyframeNet
-from model.refinenet import RefineNet
+from model.refinenet import RefineNetResidual
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     kf_config  = Config.load("configs/keyframenet.json")
     # ref_config = Config.load("configs/refinenet.json")
-    ref_config = Config.load("configs/refinenet_nope.json")
+    ref_config = Config.load("configs/refinenet_nope_res.json")
 
     # dataset - test
     print("Loading dataset...")
@@ -50,8 +50,8 @@ if __name__ == "__main__":
     kf_net.eval()
 
     # ref_net = RefineNet(len(motion_mean), len(traj_mean), len(feet_ids), ref_config, local_attn=False).to(device)
-    ref_net = RefineNet(len(motion_mean), len(traj_mean), len(feet_ids), ref_config, local_attn=ref_config.local_attn, use_pe=ref_config.use_pe).to(device)
-    utils.load_model(ref_net, ref_config, 150000)
+    ref_net = RefineNetResidual(len(motion_mean), len(traj_mean), len(feet_ids), ref_config, local_attn=ref_config.local_attn, use_pe=ref_config.use_pe).to(device)
+    utils.load_model(ref_net, ref_config, 600000)
     ref_net.eval()
 
     # character
@@ -61,7 +61,6 @@ if __name__ == "__main__":
     with torch.no_grad():
         for GT_motion in tqdm(dataloader):
             """ 1. GT motion """
-            # GT_motion = GT_motion[:, :26]
             B, T, D = GT_motion.shape
             GT_motion = GT_motion.to(device)
             GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)

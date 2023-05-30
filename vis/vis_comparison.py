@@ -18,14 +18,14 @@ from utility.config import Config
 from utility.dataset import MotionDataset
 from vis.visapp import TripletMotionApp
 from model.keyframenet import KeyframeNet
-from model.refinenet import RefineNet
+from model.refinenet import RefineNetResidual
 from model.twostage import ContextTransformer, DetailTransformer
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dset_config = Config.load("configs/dataset.json")
     kf_config  = Config.load("configs/keyframenet.json")
-    ref_config = Config.load("configs/refinenet_nope.json")
+    ref_config = Config.load("configs/refinenet_nope_res.json")
     ctx_config = Config.load("configs/context.json")
     det_config = Config.load("configs/detail.json")
 
@@ -57,8 +57,8 @@ if __name__ == "__main__":
     kf_net.eval()
 
     # ref_net = RefineNet(len(motion_mean), len(traj_mean), len(feet_ids), ref_config, local_attn=False).to(device)
-    ref_net = RefineNet(len(motion_mean), len(traj_mean), len(feet_ids), ref_config, local_attn=ref_config.local_attn, use_pe=ref_config.use_pe).to(device)
-    utils.load_model(ref_net, ref_config)
+    ref_net = RefineNetResidual(len(motion_mean), len(traj_mean), len(feet_ids), ref_config, local_attn=ref_config.local_attn, use_pe=ref_config.use_pe).to(device)
+    utils.load_model(ref_net, ref_config, 600000)
     ref_net.eval()
 
     ctx_model = ContextTransformer(len(motion_mean), ctx_config, len(traj_mean)).to(device)
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     ctx_model.eval()
 
     det_model = DetailTransformer(len(motion_mean), det_config, len(traj_mean)).to(device)
-    utils.load_model(det_model, det_config)
+    utils.load_model(det_model, det_config, 600000)
     det_model.eval()
 
     # character
@@ -83,8 +83,8 @@ if __name__ == "__main__":
             _, GT_global_p = utils.get_motion(GT_motion, skeleton)
 
             # Optional: Interpolate traj
-            GT_traj = utils.get_modified_trajectory(GT_traj, ref_config.context_frames, min_scale=1.5, max_scale=1.5)
-            GT_motion[:, -1, (-3, -1)] = GT_traj[:, -1, 0:2]
+            # GT_traj = utils.get_modified_trajectory(GT_traj, ref_config.context_frames, min_scale=1.5, max_scale=1.5)
+            # GT_motion[:, -1, (-3, -1)] = GT_traj[:, -1, 0:2]
 
             # motion
             GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
