@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import random
 
-from pymovis.learning.transformer import MultiHeadAttention, PoswiseFeedForwardNet, LocalMultiHeadAttention
+from pymovis.learning.transformer import MultiHeadAttention, PoswiseFeedForwardNet
 from pymovis.ops import rotation
 
 def get_mask(batch, context_frames):
@@ -24,14 +24,12 @@ def get_keyframe_relative_position(window_length, context_frames):
     return p_kf
 
 class RefineNet(nn.Module):
-    def __init__(self, d_motion, d_traj, d_contact, config, local_attn=False, use_pe=True):
+    def __init__(self, d_motion, d_traj, d_contact, config):
         super(RefineNet, self).__init__()
         self.d_motion = d_motion
         self.d_traj = d_traj
         self.d_contact = d_contact
         self.config = config
-        self.local_attn = local_attn
-        self.use_pe = use_pe
 
         self.d_model        = config.d_model
         self.n_layers       = config.n_layers
@@ -53,14 +51,6 @@ class RefineNet(nn.Module):
             nn.PReLU(),
             nn.Dropout(self.dropout),
         )
-        if self.use_pe:
-            self.keyframe_pos_encoder = nn.Sequential(
-                nn.Linear(2, self.d_model),
-                nn.PReLU(),
-                nn.Dropout(self.dropout),
-                nn.Linear(self.d_model, self.d_model),
-                nn.Dropout(self.dropout),
-            )
         self.relative_pos_encoder = nn.Sequential(
             nn.Linear(1, self.d_model),
             nn.PReLU(),
@@ -75,10 +65,7 @@ class RefineNet(nn.Module):
         self.pffn_layers  = nn.ModuleList()
         
         for _ in range(self.n_layers):
-            if self.local_attn:
-                self.attn_layers.append(LocalMultiHeadAttention(self.d_model, self.d_head, self.n_heads, self.config.receptive_size, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
-            else:
-                self.attn_layers.append(MultiHeadAttention(self.d_model, self.d_head, self.n_heads, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
+            self.attn_layers.append(MultiHeadAttention(self.d_model, self.d_head, self.n_heads, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
             self.pffn_layers.append(PoswiseFeedForwardNet(self.d_model, self.d_ff, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
 
         # decoder
@@ -152,12 +139,6 @@ class RefineNet(nn.Module):
         # mask
         batch_mask = self.get_mask_by_keyframe(interp_motion, keyframes)
         x = self.motion_encoder(torch.cat([interp_motion, traj, batch_mask], dim=-1))
-
-        # add keyframe positional embedding
-        if self.use_pe:
-            keyframe_pos = get_keyframe_relative_position(T, self.config.context_frames).to(x.device)
-            keyframe_pos = self.keyframe_pos_encoder(keyframe_pos)
-            x = x + keyframe_pos
 
         # relative distance
         lookup_table = torch.arange(-T+1, T, dtype=torch.float32).unsqueeze(-1).to(x.device) # (2T-1, 1)
@@ -185,14 +166,12 @@ class RefineNet(nn.Module):
         return motion, contact
     
 class RefineNetResidual(nn.Module):
-    def __init__(self, d_motion, d_traj, d_contact, config, local_attn=False, use_pe=True):
+    def __init__(self, d_motion, d_traj, d_contact, config):
         super(RefineNetResidual, self).__init__()
         self.d_motion = d_motion
         self.d_traj = d_traj
         self.d_contact = d_contact
         self.config = config
-        self.local_attn = local_attn
-        self.use_pe = use_pe
 
         self.d_model        = config.d_model
         self.n_layers       = config.n_layers
@@ -214,14 +193,6 @@ class RefineNetResidual(nn.Module):
             nn.PReLU(),
             nn.Dropout(self.dropout),
         )
-        if self.use_pe:
-            self.keyframe_pos_encoder = nn.Sequential(
-                nn.Linear(2, self.d_model),
-                nn.PReLU(),
-                nn.Dropout(self.dropout),
-                nn.Linear(self.d_model, self.d_model),
-                nn.Dropout(self.dropout),
-            )
         self.relative_pos_encoder = nn.Sequential(
             nn.Linear(1, self.d_model),
             nn.PReLU(),
@@ -236,10 +207,7 @@ class RefineNetResidual(nn.Module):
         self.pffn_layers  = nn.ModuleList()
         
         for _ in range(self.n_layers):
-            if self.local_attn:
-                self.attn_layers.append(LocalMultiHeadAttention(self.d_model, self.d_head, self.n_heads, self.config.receptive_size, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
-            else:
-                self.attn_layers.append(MultiHeadAttention(self.d_model, self.d_head, self.n_heads, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
+            self.attn_layers.append(MultiHeadAttention(self.d_model, self.d_head, self.n_heads, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
             self.pffn_layers.append(PoswiseFeedForwardNet(self.d_model, self.d_ff, dropout=self.dropout, pre_layernorm=self.pre_layernorm))
 
         # decoder
@@ -313,12 +281,6 @@ class RefineNetResidual(nn.Module):
         # mask
         batch_mask = self.get_mask_by_keyframe(interp_motion, keyframes)
         x = self.motion_encoder(torch.cat([interp_motion, traj, batch_mask], dim=-1))
-
-        # add keyframe positional embedding
-        if self.use_pe:
-            keyframe_pos = get_keyframe_relative_position(T, self.config.context_frames).to(x.device)
-            keyframe_pos = self.keyframe_pos_encoder(keyframe_pos)
-            x = x + keyframe_pos
 
         # relative distance
         lookup_table = torch.arange(-T+1, T, dtype=torch.float32).unsqueeze(-1).to(x.device) # (2T-1, 1)

@@ -49,8 +49,7 @@ if __name__ == "__main__":
     utils.load_model(kf_net, kf_config)
     kf_net.eval()
 
-    # ref_net = RefineNet(len(motion_mean), len(traj_mean), len(feet_ids), ref_config, local_attn=False).to(device)
-    ref_net = RefineNetResidual(len(motion_mean), len(traj_mean), len(feet_ids), ref_config, local_attn=ref_config.local_attn, use_pe=ref_config.use_pe).to(device)
+    ref_net = RefineNetResidual(len(motion_mean), len(traj_mean), len(feet_ids), ref_config).to(device)
     utils.load_model(ref_net, ref_config, 600000)
     ref_net.eval()
 
