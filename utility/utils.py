@@ -42,7 +42,7 @@ def load_latest_ckpt(model, optim, config, scheduler=None):
     else:
         epoch = 1
         iter = 1
-        print("No checkpoint found. Start training from scratch.")
+        print(f"No checkpoint found from {config.save_dir}. Start training from scratch.")
 
     return epoch, iter
 
