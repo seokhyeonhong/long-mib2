@@ -56,8 +56,8 @@ if __name__ == "__main__":
     utils.load_model(kf_net, kf_config)
     kf_net.eval()
 
-    # ref_net = RefineNet(len(motion_mean), len(traj_mean), len(feet_ids), ref_config, local_attn=False).to(device)
-    ref_net = RefineNetResidual(len(motion_mean), len(traj_mean), len(feet_ids), ref_config, local_attn=ref_config.local_attn, use_pe=ref_config.use_pe).to(device)
+    # ref_net = RefineNet(len(motion_mean), len(traj_mean), len(feet_ids), ref_config).to(device)
+    ref_net = RefineNetResidual(len(motion_mean), len(traj_mean), len(feet_ids), ref_config).to(device)
     utils.load_model(ref_net, ref_config, 600000)
     ref_net.eval()
 
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     with torch.no_grad():
         for GT_motion in tqdm(dataloader):
             """ 1. GT motion """
-            # GT_motion = GT_motion[:, :191]
+            GT_motion = GT_motion[:, :191]
             B, T, D = GT_motion.shape
             GT_motion = GT_motion.to(device)
             GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)

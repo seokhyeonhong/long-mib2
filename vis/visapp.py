@@ -1,4 +1,5 @@
 import copy
+import random
 import numpy as np
 import glfw
 import glm
@@ -170,10 +171,14 @@ class KeyframeApp(MotionApp):
         
         # keyframes
         if self.show_keyframe:
-            for kf in self.keyframes:
-                if ith_motion * self.frames_per_motion <= kf < (ith_motion+1) * self.frames_per_motion - 1:
-                    self.pred_model.set_pose_by_source(self.pred_motion.poses[kf])
-                    Render.model(self.pred_model).set_all_alphas(0.5).draw()
+            # for kf in self.keyframes:
+            #     if ith_motion * self.frames_per_motion <= kf < (ith_motion+1) * self.frames_per_motion - 1:
+            #         self.pred_model.set_pose_by_source(self.pred_motion.poses[kf])
+            #         Render.model(self.pred_model).set_all_alphas(0.5).draw()
+            self.pred_model.set_pose_by_source(self.pred_motion.poses[(ith_motion+1) * self.frames_per_motion - 1])
+            Render.model(self.pred_model).set_all_alphas(0.5).draw()
+            self.GT_model.set_pose_by_source(self.GT_motion.poses[(ith_motion+1) * self.frames_per_motion - 1])
+            Render.model(self.GT_model).set_all_alphas(0.5).draw()
 
         # target frame
         # self.GT_model.set_pose_by_source(self.GT_motion.poses[(ith_motion)*self.frames_per_motion])
@@ -259,20 +264,20 @@ class TripletMotionApp(MotionApp):
 
         if self.show_GT:
             self.render_char(self.GT_model, self.GT_motion.poses[self.frame], 0.5 if ith_frame == 0 or ith_frame == self.frames_per_motion - 1 else 1.0)
-            # if self.show_constrained:
+            if self.show_constrained:
             #     self.render_char(self.GT_model, self.GT_motion.poses[ith_motion * self.frames_per_motion], 0.5)
-            #     self.render_char(self.GT_model, self.GT_motion.poses[(ith_motion+1) * self.frames_per_motion - 1], 0.5)
+                self.render_char(self.GT_model, self.GT_motion.poses[(ith_motion+1) * self.frames_per_motion - 1], 0.5)
 
         if self.show_motion1:
             self.render_char(self.model1, self.motion1.poses[self.frame], 0.5 if ith_frame == 0 or ith_frame == self.frames_per_motion - 1 else 1.0)
-            # if self.show_constrained:
+            if self.show_constrained:
             #     self.render_char(self.model1, self.motion1.poses[ith_motion * self.frames_per_motion], 0.5)
-            #     self.render_char(self.model1, self.motion1.poses[(ith_motion+1) * self.frames_per_motion - 1], 0.5)
+                self.render_char(self.model1, self.motion1.poses[(ith_motion+1) * self.frames_per_motion - 1], 0.5)
         
         if self.show_motion2:
             self.render_char(self.model2, self.motion2.poses[self.frame], 0.5 if ith_frame == 0 or ith_frame == self.frames_per_motion - 1 else 1.0)
             if self.show_constrained:
-                self.render_char(self.model2, self.motion2.poses[ith_motion * self.frames_per_motion], 0.5)
+                # self.render_char(self.model2, self.motion2.poses[ith_motion * self.frames_per_motion], 0.5)
                 self.render_char(self.model2, self.motion2.poses[(ith_motion+1) * self.frames_per_motion - 1], 0.5)
         
         if self.show_traj and self.traj is not None:
@@ -321,3 +326,111 @@ class TripletMotionApp(MotionApp):
             self.show_constrained = not self.show_constrained
         elif key == glfw.KEY_Z and action == glfw.PRESS:
             self.show_guide = not self.show_guide
+
+class NeighborApp(MotionApp):
+    def __init__(self, GT_motion, pred_motion, neighbor_motions, ybot_model, frames_per_motion):
+        super().__init__(pred_motion, ybot_model, YBOT_FBX_DICT)
+
+        # GT
+        self.GT_motion = GT_motion
+        self.GT_model  = copy.deepcopy(ybot_model)
+        self.GT_model.set_source_skeleton(GT_motion.skeleton, YBOT_FBX_DICT)
+        self.show_GT   = True
+
+        for pose in self.GT_motion.poses:
+            pose.translate_root_p(np.array([-1.5, 0, 0]))
+
+        # pred
+        self.pred_motion = pred_motion
+        self.pred_model  = copy.deepcopy(ybot_model)
+        self.pred_model.set_source_skeleton(pred_motion.skeleton, YBOT_FBX_DICT)
+        self.pred_model.meshes[0].materials[0].albedo = glm.vec3(0.5)
+        self.pred_traj = Render.sphere(0.05).set_albedo(0.5)
+        self.show_pred = True
+        self.show_target = True
+
+
+        # frames
+        self.frames_per_motion = frames_per_motion
+
+        def f():
+            x=random.random()
+            from scipy.interpolate import CubicSpline
+            data_points = [0, 0.5, 1]
+            values = [1, 0, 1]
+            # values = [0, 1, 0]
+            cs = CubicSpline(data_points, values)
+            return cs(x)
+    
+        # neighbors
+        colors = [
+            glm.vec3(0.80, 0.20, 0.26),
+            glm.vec3(0.21, 0.10, 0.25),
+            glm.vec3(0.71, 0.67, 0.05),
+            glm.vec3(0.04, 0.17, 0.97),
+            glm.vec3(0.02, 0.78, 0.20)
+        ]
+        self.neighbor_motions = neighbor_motions
+        self.show_neighbors   = True
+        self.neighbor_models = []
+        for idx, motion in enumerate(neighbor_motions):
+            model = copy.deepcopy(ybot_model)
+            model.set_source_skeleton(motion.skeleton, YBOT_FBX_DICT)
+            model.meshes[0].materials[0].albedo = colors[idx]
+            # model.meshes[0].materials[0].albedo = glm.vec3(f(), f(), f())
+            self.neighbor_models.append(model)
+
+        # trajectory
+        self.show_traj = True
+        self.traj_points = []
+        for i in range(len(neighbor_motions)):
+            self.traj_points.append(Render.sphere(0.05).set_albedo(self.neighbor_models[i].meshes[0].materials[0].albedo))
+
+    def render(self):
+        super().render(render_model=False)
+
+        ith_motion = self.frame // self.frames_per_motion
+        ith_frame = self.frame % self.frames_per_motion
+
+        # GT
+        if self.show_GT:
+            self.GT_model.set_pose_by_source(self.GT_motion.poses[self.frame])
+            Render.model(self.GT_model).set_all_alphas(1.0).draw()
+
+        # pred
+        if self.show_pred:
+            self.pred_model.set_pose_by_source(self.pred_motion.poses[self.frame])
+            Render.model(self.pred_model).set_all_alphas(1.0).draw()
+
+            if self.show_target:
+                self.pred_model.set_pose_by_source(self.pred_motion.poses[(ith_motion+1)*self.frames_per_motion - 1])
+                Render.model(self.pred_model).set_all_alphas(0.5).draw()
+            # Render.model(self.pred_model).set_all_alphas(1.0 if (ith_frame != 0 and ith_frame != self.frames_per_motion - 1) else 0.5).draw()
+            if self.show_traj:
+                for pose in self.pred_motion.poses[ith_motion*self.frames_per_motion:(ith_motion+1)*self.frames_per_motion]:
+                    position = pose.root_p
+                    self.pred_traj.set_position(position[0], 0, position[2]).draw()
+        
+        # neighbors
+        if self.show_neighbors:
+            for i, model in enumerate(self.neighbor_models):
+                model.set_pose_by_source(self.neighbor_motions[i].poses[self.frame])
+                Render.model(model).set_all_alphas(0.5).draw()
+
+                if self.show_traj:
+                    for pose in self.neighbor_motions[i].poses[ith_motion*self.frames_per_motion:(ith_motion+1)*self.frames_per_motion]:
+                        position = pose.root_p
+                        self.traj_points[i].set_position(position[0], 0, position[2]).draw()
+    
+    def key_callback(self, window, key, scancode, action, mods):
+        super().key_callback(window, key, scancode, action, mods)
+        if key == glfw.KEY_Q and action == glfw.PRESS:
+            self.show_GT = not self.show_GT
+        elif key == glfw.KEY_W and action == glfw.PRESS:
+            self.show_pred = not self.show_pred
+        elif key == glfw.KEY_E and action == glfw.PRESS:
+            self.show_neighbors = not self.show_neighbors
+        elif key == glfw.KEY_R and action == glfw.PRESS:
+            self.show_traj = not self.show_traj
+        elif key == glfw.KEY_S and action == glfw.PRESS:
+            self.show_target = not self.show_target

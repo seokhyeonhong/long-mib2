@@ -3,8 +3,10 @@ sys.path.append(".")
 
 import torch
 from torch.utils.data import DataLoader
+import numpy as np
 from tqdm import tqdm
 
+from pymovis.utils import util
 from pymovis.ops import motionops, rotation, mathops
 
 from utility.dataset import MotionDataset
@@ -14,6 +16,7 @@ from model.keyframenet import KeyframeNet
 from model.refinenet import RefineNetResidual
 
 if __name__ == "__main__":
+    util.seed()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dset_config = Config.load("configs/dataset.json")
     kf_config  = Config.load("configs/keyframenet.json")
@@ -48,8 +51,8 @@ if __name__ == "__main__":
     utils.load_model(kf_net, kf_config)
     kf_net.eval()
 
-    ref_net = RefineNetResidual(len(motion_mean), len(traj_mean), len(feet_ids), ref_config, local_attn=ref_config.local_attn, use_pe=ref_config.use_pe).to(device)
-    utils.load_model(ref_net, ref_config, 150000)
+    ref_net = RefineNetResidual(len(motion_mean), len(traj_mean), len(feet_ids), ref_config).to(device)
+    utils.load_model(ref_net, ref_config, 600000)
     ref_net.eval()
 
     # evaluation
@@ -87,34 +90,46 @@ if __name__ == "__main__":
 
                 """ 3. Forward RefineNet """
                 pred_motions = []
-                for b in range(B):
-                    # adaptive keyframe selection
-                    keyframes = [ref_config.context_frames - 1]
-                    transition_start = ref_config.context_frames
-                    while transition_start < T:
-                        transition_end = min(transition_start + ref_config.max_transition, T-1)
-                        # transition_end = min(transition_start + ref_config.max_transition, T-1)
-                        if transition_end == T-1:
-                            keyframes.append(transition_end)
-                            break
 
-                        # top keyframe
-                        top_keyframe = torch.topk(pred_score[b:b+1, transition_start+ref_config.min_transition:transition_end+1], 1, dim=1).indices + transition_start + ref_config.min_transition
-                        top_keyframe = top_keyframe.item()
-                        keyframes.append(top_keyframe)
-                        transition_start = top_keyframe + 1
+                # score-based keyframe
+                # for b in range(B):
+                    # adaptive keyframe selection
+                    # keyframes = [ref_config.context_frames - 1]
+                    # transition_start = ref_config.context_frames
+                    # while transition_start < T:
+                    #     transition_end = min(transition_start + ref_config.max_transition, T-1)
+                    #     # transition_end = min(transition_start + ref_config.max_transition, T-1)
+                    #     if transition_end == T-1:
+                    #         keyframes.append(transition_end)
+                    #         break
+
+                    #     # top keyframe
+                    #     top_keyframe = torch.topk(pred_score[b:b+1, transition_start+ref_config.min_transition:transition_end+1], 1, dim=1).indices + transition_start + ref_config.min_transition
+                    #     top_keyframe = top_keyframe.item()
+                    #     keyframes.append(top_keyframe)
+                    #     transition_start = top_keyframe + 1
                     
                     # forward - interp
-                    motion = ref_net.get_interpolated_motion(kf_motion[b:b+1], keyframes)
-                    motion = (motion - motion_mean) / motion_std
+                    # keyframes = ref_net.get_random_keyframes(T)
+                    # motion = ref_net.get_interpolated_motion(kf_motion[b:b+1], keyframes)
+                    # motion = (motion - motion_mean) / motion_std
 
-                    # forward - nointerp
-                    # motion = (kf_motion[b:b+1] - motion_mean) / motion_std
-
-                    pred_motion, pred_contact = ref_net.forward(motion, traj[b:b+1], keyframes)
-                    pred_motion = pred_motion * motion_std + motion_mean
-                    pred_motions.append(pred_motion)
+                    # pred_motion, pred_contact = ref_net.forward(motion, traj[b:b+1], keyframes)
+                    # pred_motion = pred_motion * motion_std + motion_mean
+                    # pred_motions.append(pred_motion)
                 
+                # random keyframe
+                # keyframes = ref_net.get_random_keyframes(T)
+                prob = torch.rand(T)
+                keyframes = [i for i in range(T) if (prob[i] < 0.05 and i > ref_config.context_frames - 1) or (i == ref_config.context_frames - 1 or i == T-1)]
+                
+                motion = ref_net.get_interpolated_motion(kf_motion, keyframes)
+                motion = (motion - motion_mean) / motion_std
+
+                pred_motion, pred_contact = ref_net.forward(motion, traj, keyframes)
+                pred_motion = pred_motion * motion_std + motion_mean
+                pred_motions.append(pred_motion)
+
                 # concat predictions
                 pred_motion = torch.cat(pred_motions, dim=0)
 
