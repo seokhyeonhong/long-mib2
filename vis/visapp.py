@@ -107,8 +107,8 @@ class TwoMotionApp(MotionApp):
                 self.traj_point.set_position(pos[0], 0, pos[1]).draw()
 
         # draw target
-        # self.target_model.set_pose_by_source(self.GT_motion.poses[(ith_motion+1)*self.frames_per_motion - 1])
-        # Render.model(self.target_model).set_all_color_modes(False).set_all_alphas(0.5).draw()
+        self.GT_model.set_pose_by_source(self.GT_motion.poses[(ith_motion+1)*self.frames_per_motion - 1])
+        Render.model(self.GT_model).set_all_color_modes(False).set_all_alphas(0.5).draw()
         # self.target_model.set_pose_by_source(self.GT_motion.poses[(ith_motion)*self.frames_per_motion])
         # Render.model(self.target_model).set_all_color_modes(False).set_all_alphas(0.5).draw()
 
@@ -129,7 +129,7 @@ class TwoMotionApp(MotionApp):
             self.show_traj = not self.show_traj
 
 class KeyframeApp(MotionApp):
-    def __init__(self, GT_motion, pred_motion, ybot_model, frames_per_motion, keyframes):
+    def __init__(self, GT_motion, pred_motion, ybot_model, frames_per_motion, keyframes, traj=None, contact=None):
         super().__init__(GT_motion, ybot_model, YBOT_FBX_DICT)
 
         # GT
@@ -149,9 +149,53 @@ class KeyframeApp(MotionApp):
         self.frames_per_motion = frames_per_motion
         self.keyframes = keyframes
         self.show_keyframe = True
-    
-        for pose in self.pred_motion.poses:
-            pose.translate_root_p(np.array([1.5, 0, 0]))
+
+        # contact
+        left_leg_idx, left_foot_idx = pred_motion.skeleton.idx_by_name["LeftUpLeg"], pred_motion.skeleton.idx_by_name["LeftFoot"]
+        right_leg_idx, right_foot_idx = pred_motion.skeleton.idx_by_name["RightUpLeg"], pred_motion.skeleton.idx_by_name["RightFoot"]
+        ik_threshold = 0.8
+        inertial_left, inertial_right = 0, 0
+        count_left, count_right = 0, 0
+        self.contact = contact
+        if contact is not None:
+            for idx, pose in enumerate(self.pred_motion.poses):
+                if idx % self.frames_per_motion < 10 or idx % self.frames_per_motion == self.frames_per_motion-1:
+                    inertial_left = False
+                    inertial_right = False
+                    count_left = 0
+                    count_right = 0
+                    continue
+                
+                if self.contact[idx, 0] > ik_threshold:
+                    target_left = self.pred_motion.poses[idx-1].global_p[left_foot_idx]
+                    pose.two_bone_ik(left_leg_idx, left_foot_idx, self.pred_motion.poses[idx-1].global_p[left_foot_idx])
+                    inertial_left = True
+                    count_left = 0
+                elif inertial_left is True:
+                    count_left += 1
+                    disp = self.pred_motion.poses[idx].global_p[left_foot_idx] - target_left
+                    pose.two_bone_ik(left_leg_idx, left_foot_idx, target_left + disp * (0.1 * count_left))
+                    if count_left >= 10:
+                        inertial_left = False
+                        count_left = 0
+
+                if self.contact[idx, 1] > ik_threshold:
+                    target_right = self.pred_motion.poses[idx-1].global_p[right_foot_idx]
+                    pose.two_bone_ik(right_leg_idx, right_foot_idx, self.pred_motion.poses[idx-1].global_p[right_foot_idx])
+                    inertial_right = True
+                    count_right = 0
+                elif inertial_right is True:
+                    count_right += 1
+                    disp = self.pred_motion.poses[idx].global_p[right_foot_idx] - target_right
+                    pose.two_bone_ik(right_leg_idx, right_foot_idx, target_right + disp * (0.1 * count_right))
+                    if count_right >= 10:
+                        inertial_right = False
+                        count_right = 0
+        
+        # traj
+        self.traj = traj
+        self.traj_sphere = Render.sphere(0.05)
+        self.show_traj = True
     
     def render(self):
         super().render(render_model=False)
@@ -162,30 +206,39 @@ class KeyframeApp(MotionApp):
         # GT
         if self.show_GT:
             self.GT_model.set_pose_by_source(self.GT_motion.poses[self.frame])
-            Render.model(self.GT_model).set_all_alphas(1.0 if (ith_frame != 0 and ith_frame != self.frames_per_motion - 1) else 0.5).draw()
+            Render.model(self.GT_model).set_all_alphas(1.0).draw()
 
         # pred
         if self.show_pred:
             self.pred_model.set_pose_by_source(self.pred_motion.poses[self.frame])
-            Render.model(self.pred_model).set_all_alphas(1.0 if (ith_frame != 0 and ith_frame != self.frames_per_motion - 1) else 0.5).draw()
+            Render.model(self.pred_model).set_all_alphas(1.0).draw()
         
         # keyframes
-        if self.show_keyframe:
-            # for kf in self.keyframes:
-            #     if ith_motion * self.frames_per_motion <= kf < (ith_motion+1) * self.frames_per_motion - 1:
-            #         self.pred_model.set_pose_by_source(self.pred_motion.poses[kf])
-            #         Render.model(self.pred_model).set_all_alphas(0.5).draw()
-            self.pred_model.set_pose_by_source(self.pred_motion.poses[(ith_motion+1) * self.frames_per_motion - 1])
-            Render.model(self.pred_model).set_all_alphas(0.5).draw()
-            self.GT_model.set_pose_by_source(self.GT_motion.poses[(ith_motion+1) * self.frames_per_motion - 1])
-            Render.model(self.GT_model).set_all_alphas(0.5).draw()
+        # if self.show_keyframe:
+        #     # for kf in self.keyframes:
+        #     #     if ith_motion * self.frames_per_motion <= kf < (ith_motion+1) * self.frames_per_motion - 1:
+        #     #         self.pred_model.set_pose_by_source(self.pred_motion.poses[kf])
+        #     #         Render.model(self.pred_model).set_all_alphas(0.5).draw()
+        #     self.pred_model.set_pose_by_source(self.pred_motion.poses[(ith_motion+1) * self.frames_per_motion - 1])
+        #     Render.model(self.pred_model).set_all_alphas(0.5).draw()
+        #     self.GT_model.set_pose_by_source(self.GT_motion.poses[(ith_motion+1) * self.frames_per_motion - 1])
+        #     Render.model(self.GT_model).set_all_alphas(0.5).draw()
 
         # target frame
-        # self.GT_model.set_pose_by_source(self.GT_motion.poses[(ith_motion)*self.frames_per_motion])
-        # Render.model(self.GT_model).set_all_alphas(0.5).draw()
+        self.GT_model.set_pose_by_source(self.GT_motion.poses[(ith_motion+1)*self.frames_per_motion - 1])
+        Render.model(self.GT_model).set_all_alphas(0.5).draw()
 
-        # self.pred_model.set_pose_by_source(self.pred_motion.poses[(ith_motion+1)*self.frames_per_motion - 1])
-        # Render.model(self.pred_model).set_all_alphas(0.5).draw()
+        self.pred_model.set_pose_by_source(self.pred_motion.poses[(ith_motion+1)*self.frames_per_motion - 1])
+        Render.model(self.pred_model).set_all_alphas(0.5).draw()
+
+        # traj
+        if self.show_traj and self.traj is not None:
+            traj = self.traj[(ith_motion)*self.frames_per_motion:(ith_motion+1)*self.frames_per_motion]
+            for i in range(len(traj)):
+                if i != ith_frame:
+                    self.traj_sphere.set_albedo([1, 0, 0]).set_position(traj[i, 0], 0, traj[i, 1]).draw()
+                else:
+                    self.traj_sphere.set_albedo([0, 1, 0]).set_position(traj[i, 0], 0, traj[i, 1]).draw()
 
     
     def key_callback(self, window, key, scancode, action, mods):
@@ -196,6 +249,8 @@ class KeyframeApp(MotionApp):
             self.show_pred = not self.show_pred
         elif key == glfw.KEY_E and action == glfw.PRESS:
             self.show_keyframe = not self.show_keyframe
+        elif key == glfw.KEY_R and action == glfw.PRESS:
+            self.show_traj = not self.show_traj
 
 class TripletMotionApp(MotionApp):
     def __init__(self, GT_motion, motion1, motion2, ybot_model, frames_per_motion, traj=None, l2ps=None):
@@ -328,8 +383,10 @@ class TripletMotionApp(MotionApp):
             self.show_guide = not self.show_guide
 
 class NeighborApp(MotionApp):
-    def __init__(self, GT_motion, pred_motion, neighbor_motions, ybot_model, frames_per_motion):
+    def __init__(self, GT_motion, pred_motion, neighbor_motions, ybot_model, frames_per_motion, text=None):
         super().__init__(pred_motion, ybot_model, YBOT_FBX_DICT)
+
+        self.print_text = text
 
         # GT
         self.GT_motion = GT_motion
@@ -349,7 +406,6 @@ class NeighborApp(MotionApp):
         self.show_pred = True
         self.show_target = True
 
-
         # frames
         self.frames_per_motion = frames_per_motion
 
@@ -365,26 +421,32 @@ class NeighborApp(MotionApp):
         # neighbors
         colors = [
             glm.vec3(0.80, 0.20, 0.26),
+            glm.vec3(0.02, 0.78, 0.20),
+            glm.vec3(0.04, 0.17, 0.97),
             glm.vec3(0.21, 0.10, 0.25),
             glm.vec3(0.71, 0.67, 0.05),
-            glm.vec3(0.04, 0.17, 0.97),
-            glm.vec3(0.02, 0.78, 0.20)
         ]
         self.neighbor_motions = neighbor_motions
         self.show_neighbors   = True
         self.neighbor_models = []
-        for idx, motion in enumerate(neighbor_motions):
+        for idx, motion in enumerate(self.neighbor_motions):
             model = copy.deepcopy(ybot_model)
             model.set_source_skeleton(motion.skeleton, YBOT_FBX_DICT)
             model.meshes[0].materials[0].albedo = colors[idx]
+            model.meshes[1].materials[0].albedo = colors[idx] * 0.5
             # model.meshes[0].materials[0].albedo = glm.vec3(f(), f(), f())
             self.neighbor_models.append(model)
+
+            for pose in motion.poses:
+                pose.translate_root_p(np.array([-1.5 * (idx+1), 0, 0]))
 
         # trajectory
         self.show_traj = True
         self.traj_points = []
         for i in range(len(neighbor_motions)):
             self.traj_points.append(Render.sphere(0.05).set_albedo(self.neighbor_models[i].meshes[0].materials[0].albedo))
+
+        print("Q: GT, W: pred, E: neighbors, R: traj, S: target")
 
     def render(self):
         super().render(render_model=False)
@@ -415,7 +477,11 @@ class NeighborApp(MotionApp):
         if self.show_neighbors:
             for i, model in enumerate(self.neighbor_models):
                 model.set_pose_by_source(self.neighbor_motions[i].poses[self.frame])
-                Render.model(model).set_all_alphas(0.5).draw()
+                Render.model(model).set_all_alphas(1.0).draw()
+
+                if self.show_target:
+                    model.set_pose_by_source(self.neighbor_motions[i].poses[(ith_motion+1)*self.frames_per_motion - 1])
+                    Render.model(model).set_all_alphas(0.5).draw()
 
                 if self.show_traj:
                     for pose in self.neighbor_motions[i].poses[ith_motion*self.frames_per_motion:(ith_motion+1)*self.frames_per_motion]:
@@ -434,3 +500,9 @@ class NeighborApp(MotionApp):
             self.show_traj = not self.show_traj
         elif key == glfw.KEY_S and action == glfw.PRESS:
             self.show_target = not self.show_target
+        
+    def render_text(self):
+        ith_motion = self.frame // self.frames_per_motion
+        super().render_text()
+        if self.print_text is not None:
+            Render.text_on_screen(self.print_text[ith_motion]).draw()

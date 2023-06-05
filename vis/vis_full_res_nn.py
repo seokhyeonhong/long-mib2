@@ -30,6 +30,9 @@ if __name__ == "__main__":
     print("Loading dataset...")
     train_dset   = MotionDataset(train=True,  config=ref_config)
     test_dset    = MotionDataset(train=False, config=ref_config)
+    print(train_dset.features.shape)
+    print(test_dset.features.shape)
+    breakpoint()
 
     train_loader = DataLoader(train_dset, batch_size=ref_config.batch_size, shuffle=True)
     test_loader  = DataLoader(test_dset,  batch_size=ref_config.batch_size, shuffle=True)
@@ -61,22 +64,24 @@ if __name__ == "__main__":
     ybot = FBX("dataset/ybot.fbx")
 
     # construct database from training set
-    condition_db, motion_db = [], []
+    motion_db, traj_db = [], []
+    vis_db = []
     for train_data in train_loader:
         B, T, D = train_data.shape
         train_data = train_data.to(device)
 
         motion, traj = torch.split(train_data, [D-4, 4], dim=-1)
-        motion_db.append(motion)
+        vis_db.append(motion)
 
         cond_motion = torch.cat([motion[:, 0:ref_config.context_frames, :], motion[:, -1:, :]], dim=1)
         cond_motion = cond_motion.reshape(B, -1)
         traj        = traj.reshape(B, -1)
-        cond_data   = torch.cat([cond_motion, traj], dim=-1)
-        condition_db.append(cond_data)
+        motion_db.append(cond_motion)
+        traj_db.append(traj)
 
-    condition_db = torch.cat(condition_db, dim=0)
     motion_db    = torch.cat(motion_db, dim=0)
+    traj_db      = torch.cat(traj_db, dim=0)
+    vis_db       = torch.cat(vis_db, dim=0)
 
     # loop
     with torch.no_grad():
@@ -87,8 +92,8 @@ if __name__ == "__main__":
             GT_motion, GT_traj = torch.split(GT_motion, [D-4, 4], dim=-1)
 
             # Optional: Interpolate traj
-            # GT_traj = utils.get_interpolated_trajectory(GT_traj, ref_config.context_frames)#, min_scale=1.5, max_scale=1.5)
-            # GT_motion[:, -1, (-3, -1)] = GT_traj[:, -1, 0:2]
+            GT_traj = utils.get_interpolated_trajectory(GT_traj, ref_config.context_frames)#, min_scale=1.5, max_scale=1.5)
+            GT_motion[:, -1, (-3, -1)] = GT_traj[:, -1, 0:2]
 
             # motion
             GT_local_R6, GT_root_p = torch.split(GT_motion, [D-7, 3], dim=-1)
@@ -98,12 +103,15 @@ if __name__ == "__main__":
             query_motion = torch.cat([GT_motion[:, 0:ref_config.context_frames, :], GT_motion[:, -1:, :]], dim=1)
             query_motion = query_motion.reshape(B, -1)
             query_traj   = GT_traj.reshape(B, -1)
-            query_data   = torch.cat([query_motion, query_traj], dim=-1)
 
             k = 5
-            dist = torch.cdist(query_data, condition_db, p=2)
-            _, nn_idx = torch.topk(dist, k, dim=1, largest=False)
-            nn_motion = torch.index_select(motion_db, 0, nn_idx.reshape(-1))
+            motion_dist = torch.cdist(query_motion, motion_db, p=2)
+            traj_dist   = torch.cdist(query_traj, traj_db, p=2)
+            _, nn_idx = torch.topk(motion_dist + traj_dist, k, dim=1, largest=False)
+            nn_motion = torch.index_select(vis_db, 0, nn_idx.reshape(-1))
+            nn_dist   = (motion_dist + traj_dist).gather(dim=1, index=nn_idx)
+            nn_dist   = torch.mean(nn_dist, dim=-1)
+            print(nn_dist)
 
             """ 3. Forward KeyframeNet & RefineNet """
             # KeyframeNet
@@ -174,5 +182,5 @@ if __name__ == "__main__":
                     total_kfs.append(k + b*T)
 
             app_manager = AppManager()
-            app = NeighborApp(GT_motion, pred_motion, nn_motions, ybot.model(), T)
+            app = NeighborApp(GT_motion, pred_motion, nn_motions, ybot.model(), T, text=nn_dist.cpu().numpy())
             app_manager.run(app)

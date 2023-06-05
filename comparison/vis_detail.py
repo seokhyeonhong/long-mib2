@@ -60,7 +60,7 @@ if __name__ == "__main__":
     with torch.no_grad():
         for GT_motion in tqdm(dataloader):
             """ 1. GT motion data """
-            T = ctx_config.context_frames + 90 + 1
+            T = ctx_config.context_frames + 30 + 1
             # T = GT_motion.shape[1]
             GT_motion = GT_motion[:, :T].to(device)
             B, T, D = GT_motion.shape
