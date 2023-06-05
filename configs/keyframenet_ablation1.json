@@ -21,7 +21,7 @@
     "val_interval": 1000,
 
     "batch_size": 64,
-    "epochs": 1000,
+    "epochs": 500,
     "lr": 1e-5,
 
     "min_transition": 5,

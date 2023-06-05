@@ -21,7 +21,7 @@ from utility import utils
 if __name__ == "__main__":
     # initial settings
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = Config.load("configs/keyframenet.json")
+    config = Config.load("configs/keyframenet_ablation1.json")
     util.seed()
 
     # dataset

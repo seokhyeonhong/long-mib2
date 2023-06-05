@@ -49,7 +49,7 @@ if __name__ == "__main__":
     # model
     print("Initializing model...")
     kf_model = KeyframeNet(len(motion_mean), len(traj_mean), kf_config).to(device)
-    utils.load_model(kf_model, kf_config)
+    utils.load_model(kf_model, kf_config, 150000)
     kf_model.eval()
 
     model = RefineNetResidual(len(motion_mean), len(traj_mean), len(feet_ids), config).to(device)
